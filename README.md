@@ -1,6 +1,6 @@
 <p align="center">
   <h1>meal-planner-agent</h1>
-  <em>Your AI-powered sous chef for effortless, personalized meal planning.</em>
+  <em>Your AI-powered sous chef for effortless, personalized meal planning and calorie tracking.</em>
 </p>
 
 <p align="center">
