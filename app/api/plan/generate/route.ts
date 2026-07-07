@@ -10,6 +10,7 @@ const MealCellSchema = z.object({
   carbs: z.number(),
   fat: z.number(),
   ingredients: z.array(z.string()).default([]),
+  instructions: z.array(z.string()).default([]),
   description: z.string().default(""),
 });
 
@@ -86,7 +87,8 @@ Return ONLY a JSON object with this structure:
 Each meal object must include:
 - name: meal name string
 - calories, protein, carbs, fat: numeric macro estimates
-- ingredients: array of 3–4 key ingredients as short strings (e.g. "Grilled chicken breast", "White quinoa", "Blueberries")
+- ingredients: array of 4–6 key ingredients as short strings (e.g. "Grilled chicken breast", "White quinoa", "Blueberries")
+- instructions: array of 3–5 concise cooking steps (e.g. "Cook quinoa in water for 15 minutes", "Season and grill chicken for 6 minutes per side")
 - description: one sentence explaining why this meal fits the goals (e.g. "Lean protein with easy-to-digest carbs to fuel recovery")
 
 Keep meals varied, interesting, and accurate to the macro targets.`;

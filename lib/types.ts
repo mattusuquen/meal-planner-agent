@@ -72,6 +72,7 @@ export interface MealCell {
   carbs: number;
   fat: number;
   ingredients?: string[];
+  instructions?: string[];
   description?: string;
   image_url?: string;
 }

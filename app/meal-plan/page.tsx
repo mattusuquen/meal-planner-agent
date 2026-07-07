@@ -182,6 +182,14 @@ export default function MealPlanPage() {
   const [generating, setGenerating] = useState(false);
   const [swappingKey, setSwappingKey] = useState<string | null>(null);
   const [showRefreshConfirm, setShowRefreshConfirm] = useState(false);
+  const [savedSlotKeys, setSavedSlotKeys] = useState<Set<string>>(new Set());
+  const [savingSlotKey, setSavingSlotKey] = useState<string | null>(null);
+  const [selectedMealModal, setSelectedMealModal] = useState<{
+    slot: Slot;
+    meal: MealCell;
+    imageUrl: string | null;
+    slotKey: string;
+  } | null>(null);
   const [mealImages, setMealImages] = useState<Record<string, string>>({});
   const pendingImages = useRef<Set<string>>(new Set());
 
@@ -330,6 +338,28 @@ export default function MealPlanPage() {
     router.push("/grocery-list");
   };
 
+  const handleSaveRecipe = async (slotKey: string, meal: MealCell) => {
+    setSavingSlotKey(slotKey);
+    const res = await fetch("/api/recipes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: meal.name,
+        calories: meal.calories,
+        protein_g: meal.protein,
+        carbs_g: meal.carbs,
+        fat_g: meal.fat,
+        ingredients: meal.ingredients ?? [],
+        instructions: meal.instructions ?? [],
+        servings: 1,
+      }),
+    });
+    if (res.ok) {
+      setSavedSlotKeys((prev) => new Set([...prev, slotKey]));
+    }
+    setSavingSlotKey(null);
+  };
+
   // ── Derived stats ────────────────────────────────────────────────────────────
 
   const goalTags = useMemo(() => {
@@ -379,17 +409,6 @@ export default function MealPlanPage() {
         <div className="flex items-start justify-between gap-3 mb-5">
           <div className="min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <svg
-                className="w-6 h-6 text-brand-600 flex-shrink-0"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z"
-                  clipRule="evenodd"
-                />
-              </svg>
               <h1 className="text-2xl font-bold text-gray-900 leading-tight">
                 Your Weekly Meal Plan
               </h1>
@@ -573,11 +592,10 @@ export default function MealPlanPage() {
                       <button
                         key={day}
                         onClick={() => setMobileDayIdx(i)}
-                        className={`flex-shrink-0 flex flex-col items-center px-3 py-2.5 rounded-xl border-2 transition-all min-w-[52px] ${
-                          isActive
+                        className={`flex-shrink-0 flex flex-col items-center px-3 py-2.5 rounded-xl border-2 transition-all min-w-[52px] ${isActive
                             ? "border-brand-600 bg-brand-600 text-white"
                             : "border-gray-100 bg-white text-gray-500 hover:border-gray-200"
-                        }`}
+                          }`}
                       >
                         <span className="text-xs font-semibold uppercase tracking-wide">{short}</span>
                         <span className="text-sm font-bold">{num}</span>
@@ -592,6 +610,7 @@ export default function MealPlanPage() {
                     const meal = plan.plan[selectedDayIso]?.[slot] as MealCell | null;
                     const imageUrl = getImage(slot);
                     const isSwapping = swappingKey === `${selectedDayIso}-${slot}`;
+                    const slotKey = `${selectedDayIso}-${slot}`;
 
                     if (!meal) {
                       return (
@@ -609,7 +628,10 @@ export default function MealPlanPage() {
 
                     return (
                       <FadeIn key={slot} delay={i * 60}>
-                        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                        <div
+                          className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
+                          onClick={() => setSelectedMealModal({ slot, meal, imageUrl, slotKey })}
+                        >
                           {/* Section header */}
                           <div className="flex items-center justify-between px-4 pt-4 pb-3">
                             <div className="flex items-center gap-2 min-w-0">
@@ -659,6 +681,11 @@ export default function MealPlanPage() {
                                       <span>{ing}</span>
                                     </li>
                                   ))}
+                                  {meal.ingredients.length > 4 && (
+                                    <li className="text-xs text-brand-400 pl-3">
+                                      +{meal.ingredients.length - 4} more — tap to view
+                                    </li>
+                                  )}
                                 </ul>
                               ) : (
                                 <div className="flex flex-wrap gap-1 mt-1">
@@ -697,7 +724,7 @@ export default function MealPlanPage() {
                               {SLOT_TIMES[slot]}
                             </span>
                             <button
-                              onClick={() => handleSwap(selectedDayIso, slot)}
+                              onClick={(e) => { e.stopPropagation(); handleSwap(selectedDayIso, slot); }}
                               disabled={isSwapping}
                               className="ml-auto flex items-center gap-1.5 text-xs text-gray-400 hover:text-brand-600 transition-colors disabled:opacity-50"
                             >
@@ -727,6 +754,155 @@ export default function MealPlanPage() {
           </>
         )}
       </div>
+
+      {/* ── Meal detail modal ── */}
+      {selectedMealModal && (() => {
+        const { slot, meal, imageUrl, slotKey } = selectedMealModal;
+        const isSaved = savedSlotKeys.has(slotKey) || !!meal.recipe_id;
+        const isSaving = savingSlotKey === slotKey;
+        return (
+          <div
+            className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+            onClick={() => setSelectedMealModal(null)}
+          >
+            <div
+              className="bg-white w-full sm:rounded-2xl sm:max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Image */}
+              {imageUrl ? (
+                <div className="relative">
+                  <img
+                    src={imageUrl}
+                    alt={meal.name}
+                    className="w-full h-52 object-cover sm:rounded-t-2xl"
+                  />
+                  <button
+                    onClick={() => setSelectedMealModal(null)}
+                    className="absolute top-3 right-3 w-8 h-8 bg-black/40 rounded-full flex items-center justify-center text-white hover:bg-black/60 transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ) : (
+                <div className="relative w-full h-36 bg-gray-100 flex items-center justify-center sm:rounded-t-2xl">
+                  <div className="w-16 h-16 rounded-full bg-gray-200 animate-pulse" />
+                  <button
+                    onClick={() => setSelectedMealModal(null)}
+                    className="absolute top-3 right-3 w-8 h-8 bg-white/80 rounded-full flex items-center justify-center text-gray-600 hover:bg-white transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+
+              <div className="p-5">
+                {/* Slot label */}
+                <div className="flex items-center gap-1.5 mb-2">
+                  <SlotIcon slot={slot} />
+                  <span className={`text-xs font-semibold ${slotKcalColor[slot]}`}>{slot}</span>
+                  <span className="text-xs text-gray-400">· {SLOT_TIMES[slot]}</span>
+                </div>
+
+                {/* Meal name */}
+                <h2 className="text-xl font-bold text-gray-900 leading-tight mb-4">{meal.name}</h2>
+
+                {/* Macros */}
+                <div className="grid grid-cols-4 gap-2 mb-5">
+                  <div className="bg-orange-50 rounded-xl p-2.5 text-center">
+                    <p className="text-xs text-orange-400 font-medium">Calories</p>
+                    <p className="text-sm font-bold text-orange-600">{meal.calories}</p>
+                  </div>
+                  <div className="bg-blue-50 rounded-xl p-2.5 text-center">
+                    <p className="text-xs text-blue-400 font-medium">Protein</p>
+                    <p className="text-sm font-bold text-blue-600">{meal.protein}g</p>
+                  </div>
+                  <div className="bg-amber-50 rounded-xl p-2.5 text-center">
+                    <p className="text-xs text-amber-400 font-medium">Carbs</p>
+                    <p className="text-sm font-bold text-amber-600">{meal.carbs}g</p>
+                  </div>
+                  <div className="bg-rose-50 rounded-xl p-2.5 text-center">
+                    <p className="text-xs text-rose-400 font-medium">Fat</p>
+                    <p className="text-sm font-bold text-rose-600">{meal.fat}g</p>
+                  </div>
+                </div>
+
+                {/* Description */}
+                {meal.description && (
+                  <div className="mb-5">
+                    <p className="text-sm text-gray-600 leading-relaxed">{meal.description}</p>
+                  </div>
+                )}
+
+                {/* Ingredients */}
+                {meal.ingredients && meal.ingredients.length > 0 && (
+                  <div className="mb-5">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                      Ingredients
+                      <span className="ml-1.5 text-xs font-normal text-gray-400">({meal.ingredients.length})</span>
+                    </h3>
+                    <ul className="space-y-1.5">
+                      {meal.ingredients.map((ing, j) => (
+                        <li key={j} className="flex items-start gap-2 text-sm text-gray-600">
+                          <span className="text-gray-300 flex-shrink-0 mt-0.5">•</span>
+                          <span>{ing}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Instructions */}
+                {meal.instructions && meal.instructions.length > 0 && (
+                  <div className="mb-5">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Instructions</h3>
+                    <ol className="space-y-3">
+                      {meal.instructions.map((step, j) => (
+                        <li key={j} className="flex gap-3 text-sm text-gray-600">
+                          <span className="flex-shrink-0 w-5 h-5 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center text-xs font-semibold">
+                            {j + 1}
+                          </span>
+                          <span className="leading-relaxed">{step}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+
+                {/* Favorite / Save action */}
+                {isSaved ? (
+                  <div className="flex items-center justify-center gap-2 py-3 px-4 bg-green-50 rounded-xl text-green-600">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                    </svg>
+                    <span className="text-sm font-medium">Saved to your Recipes</span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => handleSaveRecipe(slotKey, meal)}
+                      disabled={isSaving}
+                      className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-brand-600 text-white rounded-xl font-medium text-sm hover:bg-brand-700 transition-colors disabled:opacity-60"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                      </svg>
+                      {isSaving ? "Saving…" : "Save to Recipes"}
+                    </button>
+                    <p className="text-center text-xs text-gray-400">
+                      Add this meal to your saved recipes for easy access
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Refresh confirm modal ── */}
       {showRefreshConfirm && (

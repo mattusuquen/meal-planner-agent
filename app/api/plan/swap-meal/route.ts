@@ -72,7 +72,10 @@ export async function POST(request: Request) {
 ${profile?.dietary_restrictions?.length ? `Restrictions: ${profile.dietary_restrictions.join(", ")}` : ""}
 ${profile?.allergies?.length ? `Avoid: ${profile.allergies.join(", ")}` : ""}
 Remaining budget for the day: ${remaining.calories} cal, ${remaining.protein}g protein, ${remaining.carbs}g carbs, ${remaining.fat}g fat.
-Return ONLY JSON: { "name": string, "calories": number, "protein": number, "carbs": number, "fat": number }`,
+Return ONLY JSON: { "name": string, "calories": number, "protein": number, "carbs": number, "fat": number, "ingredients": string[], "instructions": string[], "description": string }
+- ingredients: 4–6 key ingredients as short strings
+- instructions: 3–5 concise cooking steps
+- description: one sentence explaining why this meal fits the goals`,
       },
       { role: "user", content: `Suggest a different ${slot} option.` },
     ],
