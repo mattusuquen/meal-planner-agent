@@ -9,6 +9,8 @@ const MealCellSchema = z.object({
   protein: z.number(),
   carbs: z.number(),
   fat: z.number(),
+  ingredients: z.array(z.string()).default([]),
+  description: z.string().default(""),
 });
 
 const PlanSchema = z.record(
@@ -81,7 +83,13 @@ Return ONLY a JSON object with this structure:
   ... (all 7 days: ${days.join(", ")})
 }
 
-Each meal should have accurate estimated macros. Keep meals varied and interesting.`;
+Each meal object must include:
+- name: meal name string
+- calories, protein, carbs, fat: numeric macro estimates
+- ingredients: array of 3–4 key ingredients as short strings (e.g. "Grilled chicken breast", "White quinoa", "Blueberries")
+- description: one sentence explaining why this meal fits the goals (e.g. "Lean protein with easy-to-digest carbs to fuel recovery")
+
+Keep meals varied, interesting, and accurate to the macro targets.`;
 
   let attempts = 0;
   let planData = null;

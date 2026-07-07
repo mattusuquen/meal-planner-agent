@@ -71,6 +71,9 @@ export interface MealCell {
   protein: number;
   carbs: number;
   fat: number;
+  ingredients?: string[];
+  description?: string;
+  image_url?: string;
 }
 
 export type MealPlanData = Record<string, Record<string, MealCell | null>>;
