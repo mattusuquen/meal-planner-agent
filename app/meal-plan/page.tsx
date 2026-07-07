@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import PageHeader from "@/components/shared/PageHeader";
 import Button from "@/components/ui/Button";
+import Skeleton from "@/components/ui/Skeleton";
+import FadeIn from "@/components/ui/FadeIn";
 import type { MealPlan, MealCell } from "@/lib/types";
 
 const SLOTS = ["Breakfast", "Lunch", "Dinner", "Snacks"] as const;
@@ -177,7 +179,58 @@ export default function MealPlanPage() {
       </PageHeader>
 
       {loading ? (
-        <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Loading plan...</div>
+        <>
+          {/* Mobile skeleton */}
+          <div className="block md:hidden">
+            <div className="flex gap-1 overflow-x-auto pb-2 mb-4">
+              {[...Array(7)].map((_, i) => (
+                <div key={i} className="flex-shrink-0 flex flex-col items-center px-3 py-2 rounded-xl border-2 border-gray-100 bg-white gap-1.5">
+                  <Skeleton className="h-3 w-8" />
+                  <Skeleton className="h-4 w-6" />
+                </div>
+              ))}
+            </div>
+            <div className="space-y-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+                  <Skeleton className="h-3 w-16 mb-2" />
+                  <Skeleton className="h-4 w-3/4 mb-2" />
+                  <div className="flex gap-3 mt-2">
+                    <Skeleton className="h-3 w-16" />
+                    <Skeleton className="h-3 w-8" />
+                    <Skeleton className="h-3 w-8" />
+                    <Skeleton className="h-3 w-8" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Desktop skeleton */}
+          <div className="hidden md:block overflow-x-auto">
+            <div className="min-w-[960px]">
+              <div className="grid grid-cols-7 gap-2 mb-2">
+                {[...Array(7)].map((_, i) => (
+                  <div key={i} className="text-center flex flex-col items-center gap-1">
+                    <Skeleton className="h-3 w-8" />
+                    <Skeleton className="h-4 w-14" />
+                  </div>
+                ))}
+              </div>
+              {[...Array(4)].map((_, row) => (
+                <div key={row} className="grid grid-cols-7 gap-2 mb-2">
+                  {[...Array(7)].map((_, col) => (
+                    <div key={col} className="bg-white rounded-xl p-3 border border-gray-100 min-h-[100px] flex flex-col gap-2">
+                      <Skeleton className="h-3 w-12" />
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-16 mt-auto" />
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
       ) : !plan ? (
         <div className="flex flex-col items-center justify-center h-64 gap-4">
           <div className="text-5xl">📅</div>
@@ -219,7 +272,7 @@ export default function MealPlanPage() {
             </div>
 
             <div className="space-y-3">
-              {SLOTS.map((slot) => {
+              {SLOTS.map((slot, i) => {
                 const selectedDay = days[mobileDayIdx];
                 const meal = plan.plan[selectedDay]?.[slot] as MealCell | null;
                 const key = `${selectedDay}-${slot}`;
@@ -227,17 +280,20 @@ export default function MealPlanPage() {
 
                 if (!meal) {
                   return (
-                    <div key={slot} className="border-2 border-dashed border-gray-200 rounded-xl p-4 flex items-center gap-3">
-                      <svg className="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      <span className={`text-sm font-semibold ${slotColor[slot]}`}>{slot}</span>
-                      <span className="text-xs text-gray-300">Empty</span>
-                    </div>
+                    <FadeIn key={slot} delay={i * 70}>
+                      <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 flex items-center gap-3">
+                        <svg className="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        <span className={`text-sm font-semibold ${slotColor[slot]}`}>{slot}</span>
+                        <span className="text-xs text-gray-300">Empty</span>
+                      </div>
+                    </FadeIn>
                   );
                 }
                 return (
-                  <div key={slot} className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+                  <FadeIn key={slot} delay={i * 70}>
+                  <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
                     <span className={`text-xs font-semibold uppercase tracking-wide ${slotColor[slot]}`}>{slot}</span>
                     <p className="text-sm font-medium text-gray-900 mt-1">{meal.name}</p>
                     <div className="flex items-center gap-3 mt-2">
@@ -256,6 +312,7 @@ export default function MealPlanPage() {
                       </button>
                     </div>
                   </div>
+                  </FadeIn>
                 );
               })}
               <div className="text-center py-2 border-t border-gray-100">
@@ -282,8 +339,9 @@ export default function MealPlanPage() {
                 })}
               </div>
 
-              {SLOTS.map((slot) => (
-                <div key={slot} className="grid grid-cols-7 gap-2 mb-2">
+              {SLOTS.map((slot, i) => (
+                <FadeIn key={slot} delay={i * 70}>
+                <div className="grid grid-cols-7 gap-2 mb-2">
                   {days.map((day) => {
                     const meal = plan.plan[day]?.[slot] as MealCell | null;
                     const key = `${day}-${slot}`;
@@ -326,6 +384,7 @@ export default function MealPlanPage() {
                     );
                   })}
                 </div>
+                </FadeIn>
               ))}
 
               <div className="grid grid-cols-7 gap-2 mt-2 border-t border-gray-200 pt-3">

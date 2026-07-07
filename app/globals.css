@@ -30,7 +30,15 @@
   --color-surface: #f9fafb;
 }
 
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 @layer utilities {
+  .animate-fade-in {
+    animation: fade-in 0.25s ease-out both;
+  }
   .bg-brand-50 { background-color: var(--color-brand-50); }
   .bg-brand-100 { background-color: var(--color-brand-100); }
   .bg-brand-500 { background-color: var(--color-brand-500); }

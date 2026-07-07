@@ -7,6 +7,8 @@ import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import ProgressBar from "@/components/ui/ProgressBar";
 import PillBadge from "@/components/ui/PillBadge";
+import Skeleton from "@/components/ui/Skeleton";
+import FadeIn from "@/components/ui/FadeIn";
 
 interface GroceryItem {
   id: string;
@@ -82,7 +84,39 @@ export default function GroceryListPage() {
       </PageHeader>
 
       {loading ? (
-        <div className="flex items-center justify-center h-40 text-gray-400 text-sm">Loading grocery list...</div>
+        <>
+          <Card className="flex items-center gap-4 mb-6 px-4 py-3">
+            <Skeleton className="h-4 w-24" />
+            <div className="h-4 w-px bg-gray-200" />
+            <Skeleton className="h-4 w-20" />
+            <div className="ml-auto flex-1 max-w-32">
+              <Skeleton className="h-2 w-full rounded-full" />
+            </div>
+            <Skeleton className="h-4 w-8" />
+          </Card>
+          <div className="space-y-4">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="px-5 py-3.5 border-b bg-gray-50 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <Skeleton className="w-6 h-6 rounded" />
+                    <Skeleton className="h-4 w-20" />
+                  </div>
+                  <Skeleton className="h-5 w-28 rounded-full" />
+                </div>
+                <div className="divide-y divide-gray-50">
+                  {[...Array(4)].map((_, j) => (
+                    <div key={j} className="flex items-center gap-3 px-5 py-3">
+                      <Skeleton className="w-4 h-4 rounded" />
+                      <Skeleton className="h-4 flex-1" />
+                      <Skeleton className="h-3 w-12" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       ) : categories.length === 0 ? (
         <Card className="p-12 text-center">
           <div className="text-5xl mb-4">🛒</div>
@@ -92,30 +126,32 @@ export default function GroceryListPage() {
         </Card>
       ) : (
         <>
-          <Card className="flex items-center gap-4 mb-6 px-4 py-3">
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-brand-500" />
-              <span className="text-sm text-gray-600">
-                <span className="font-semibold text-gray-900">{checkedCount}</span> / {totalItems} items
+          <FadeIn delay={0}>
+            <Card className="flex items-center gap-4 mb-6 px-4 py-3">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-brand-500" />
+                <span className="text-sm text-gray-600">
+                  <span className="font-semibold text-gray-900">{checkedCount}</span> / {totalItems} items
+                </span>
+              </div>
+              <div className="h-4 w-px bg-gray-200" />
+              <span className="text-sm text-gray-500">{categories.length} categories</span>
+              <div className="ml-auto flex-1 max-w-32">
+                <ProgressBar value={totalItems > 0 ? (checkedCount / totalItems) * 100 : 0} />
+              </div>
+              <span className="text-sm font-semibold text-brand-600">
+                {totalItems > 0 ? Math.round((checkedCount / totalItems) * 100) : 0}%
               </span>
-            </div>
-            <div className="h-4 w-px bg-gray-200" />
-            <span className="text-sm text-gray-500">{categories.length} categories</span>
-            <div className="ml-auto flex-1 max-w-32">
-              <ProgressBar value={totalItems > 0 ? (checkedCount / totalItems) * 100 : 0} />
-            </div>
-            <span className="text-sm font-semibold text-brand-600">
-              {totalItems > 0 ? Math.round((checkedCount / totalItems) * 100) : 0}%
-            </span>
-          </Card>
+            </Card>
+          </FadeIn>
 
           <div className="space-y-4">
-            {categories.map((cat) => {
+            {categories.map((cat, i) => {
               const catChecked = cat.items.filter((i) => checked.has(i.id)).length;
               const headerColor = CAT_COLORS[cat.name] ?? "bg-gray-50 border-gray-200";
               return (
+                <FadeIn key={cat.name} delay={80 + i * 70}>
                 <CategorySection
-                  key={cat.name}
                   icon={cat.icon}
                   label={cat.name}
                   headerColorClass={`${headerColor} border-b`}
@@ -152,6 +188,7 @@ export default function GroceryListPage() {
                     })}
                   </div>
                 </CategorySection>
+                </FadeIn>
               );
             })}
           </div>
