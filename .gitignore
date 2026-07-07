@@ -24,4 +24,4 @@ npm-debug.log*
 next-env.d.ts
 
 .claude
-.env
+.env.local
