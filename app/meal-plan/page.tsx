@@ -59,6 +59,7 @@ export default function MealPlanPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [swappingKey, setSwappingKey] = useState<string | null>(null);
+  const [showRefreshConfirm, setShowRefreshConfirm] = useState(false);
   const [mobileDayIdx, setMobileDayIdx] = useState(() => {
     const today = new Date();
     const todayMonday = getMonday(today);
@@ -165,16 +166,30 @@ export default function MealPlanPage() {
       <PageHeader title="Meal Plan" subtitle={`Week of ${formatWeekLabel(monday)}`}>
         {weekNav}
         {plan && (
-          <Button
-            icon={
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-            }
-            onClick={handleGroceryList}
-          >
-            Grocery List
-          </Button>
+          <>
+            <Button
+              variant="secondary"
+              icon={
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              }
+              onClick={() => setShowRefreshConfirm(true)}
+              disabled={generating}
+            >
+              Refresh Plan
+            </Button>
+            <Button
+              icon={
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              }
+              onClick={handleGroceryList}
+            >
+              Grocery List
+            </Button>
+          </>
         )}
       </PageHeader>
 
@@ -400,6 +415,28 @@ export default function MealPlanPage() {
             </div>
           </div>
         </>
+      )}
+      {showRefreshConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl p-6 shadow-xl max-w-sm w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900">Refresh meal plan?</h3>
+            <p className="text-sm text-gray-500 mt-2">
+              This will replace your current meal plan for this week with a newly generated one. This action cannot be undone.
+            </p>
+            <div className="flex gap-3 mt-6 justify-end">
+              <Button variant="secondary" onClick={() => setShowRefreshConfirm(false)}>
+                Cancel
+              </Button>
+              <Button
+                className="bg-red-500 text-white hover:bg-red-600"
+                onClick={() => { setShowRefreshConfirm(false); handleGenerate(); }}
+                disabled={generating}
+              >
+                Yes, refresh
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
