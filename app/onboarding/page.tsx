@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 type Goal = "lose" | "maintain" | "gain";
 type ActivityLevel = "sedentary" | "light" | "moderate" | "active" | "very_active";
@@ -60,6 +61,7 @@ export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [allergyInput, setAllergyInput] = useState("");
+  const [saving, setSaving] = useState(false);
   const [data, setData] = useState<OnboardingData>({
     goal: "lose",
     targetRate: 1,
@@ -480,10 +482,46 @@ export default function OnboardingPage() {
             </div>
 
             <button
-              onClick={() => router.push("/dashboard")}
-              className="w-full py-3.5 bg-brand-600 text-white rounded-xl font-semibold text-base hover:bg-brand-700 transition-colors"
+              disabled={saving}
+              onClick={async () => {
+                setSaving(true);
+                try {
+                  const supabase = createClient();
+                  const { data: { user } } = await supabase.auth.getUser();
+                  if (!user) { router.push("/auth/login"); return; }
+
+                  const age = parseInt(data.age) || 28;
+                  const weightKg = (parseFloat(data.weightLbs) || 185) * 0.453592;
+                  const heightCm = ((parseInt(data.heightFt) || 5) * 12 + (parseInt(data.heightIn) || 0)) * 2.54;
+                  const birthYear = new Date().getFullYear() - age;
+                  const birthDate = `${birthYear}-01-01`;
+
+                  await supabase.from("profiles").update({
+                    goal: data.goal,
+                    activity_level: data.activityLevel,
+                    height_cm: heightCm,
+                    birth_date: birthDate,
+                    sex: data.sex,
+                    calorie_target: macros.calories,
+                    protein_g: macros.protein,
+                    carbs_g: macros.carbs,
+                    fat_g: macros.fat,
+                    dietary_restrictions: data.restrictions,
+                    allergies: data.allergies,
+                    cuisines: data.cuisines,
+                    meal_structure: data.mealStructure,
+                    onboarding_complete: true,
+                    updated_at: new Date().toISOString(),
+                  }).eq("id", user.id);
+
+                  router.push("/dashboard");
+                } catch {
+                  setSaving(false);
+                }
+              }}
+              className="w-full py-3.5 bg-brand-600 text-white rounded-xl font-semibold text-base hover:bg-brand-700 transition-colors disabled:opacity-60"
             >
-              Start Planning →
+              {saving ? "Saving..." : "Start Planning →"}
             </button>
           </div>
         )}
