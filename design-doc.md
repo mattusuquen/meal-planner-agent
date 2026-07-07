@@ -14,14 +14,15 @@ An AI-powered meal planning and nutrition tracking application. Users generate p
 - Generate meal plans and recipes tailored to user goals, preferences, and dietary restrictions
 - Guarantee macro/calorie accuracy by grounding all nutrition data in the USDA FoodData Central database
 - Provide progress dashboards that recalculate automatically as user data changes
-- Enhance recipes and meal plan entries with AI-generated images
-- Act as an agent: proactively adjust plans based on logged data and progress trends
+- Enhance recipes with AI-generated images
+- Log meals via photo capture, free-text AI parse, USDA search, saved recipes, or meal plan
 
 ### Non-Goals (v1)
 - Barcode scanning
 - Wearable/fitness integrations
 - Social features
 - Native mobile apps (responsive web first)
+- Agent weekly review / adaptive calorie target revision (planned v2)
 
 ---
 
@@ -118,7 +119,8 @@ An AI-powered meal planning and nutrition tracking application. Users generate p
 ```sql
 profiles (
   id uuid pk references auth.users,
-  goal text, activity_level text,
+  goal text,                          -- 'lose' | 'maintain' | 'gain'
+  activity_level text,                -- 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active'
   height_cm numeric, birth_date date, sex text,
   calorie_target int, protein_g int, carbs_g int, fat_g int,
   dietary_restrictions text[], allergies text[], dislikes text[], cuisines text[],
@@ -129,11 +131,13 @@ profiles (
 
 recipes (
   id uuid pk, created_by uuid references profiles,
-  name text, instructions jsonb, servings int,
-  image_url text, source text check (source in ('ai','user')),
+  name text, instructions jsonb,      -- array of step strings
+  servings int, image_url text,
+  source text,                        -- 'ai' | 'user'
   cuisine text, prep_minutes int,
   -- denormalized verified totals per serving:
-  calories numeric, protein_g numeric, carbs_g numeric, fat_g numeric
+  calories numeric, protein_g numeric, carbs_g numeric, fat_g numeric,
+  created_at timestamptz
 )
 
 recipe_ingredients (
@@ -160,15 +164,20 @@ meal_plans (
 --   image_url text          -- cached after gpt-image-1 generation
 
 logged_meals (
-  id uuid pk, user_id uuid, logged_date date,
-  recipe_id uuid null, custom_entry jsonb null,
-  servings numeric default 1, meal_slot text,
-  entry_method text check (entry_method in ('plan','recipe','search','text','photo','quick')),
-  photo_url text null
+  id uuid pk, user_id uuid references profiles,
+  logged_date date,
+  recipe_id uuid null references recipes,
+  custom_entry jsonb null,            -- { name, calories, protein_g, carbs_g, fat_g }
+  servings numeric default 1,
+  meal_slot text,                     -- 'Breakfast' | 'Lunch' | 'Dinner' | 'Snacks'
+  entry_method text,                  -- 'plan' | 'recipe' | 'search' | 'text' | 'photo' | 'quick'
+  photo_url text null,
+  created_at timestamptz
 )
 
 daily_totals (
-  user_id uuid, date date,
+  user_id uuid references profiles,
+  date date,
   calories numeric, protein_g numeric, carbs_g numeric, fat_g numeric,
   meals_logged int,
   primary key (user_id, date)
