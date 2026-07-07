@@ -6,7 +6,7 @@ import MobileNav from "./MobileNav";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isOnboarding = pathname === "/onboarding" || pathname === "/";
+  const isOnboarding = pathname === "/onboarding" || pathname === "/" || pathname.startsWith("/auth");
 
   if (isOnboarding) {
     return <>{children}</>;

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import PageHeader from "@/components/shared/PageHeader";
 import TabSwitcher from "@/components/shared/TabSwitcher";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import { createClient } from "@/lib/supabase/client";
 
 type SettingsTab = "profile" | "nutrition" | "preferences";
 
@@ -29,11 +30,14 @@ function calcMacros(calories: number, proteinPct: number, carbsPct: number, fatP
 export default function SettingsPage() {
   const [tab, setTab] = useState<SettingsTab>("profile");
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [allergyInput, setAllergyInput] = useState("");
+  const [userId, setUserId] = useState<string | null>(null);
 
   const [profile, setProfile] = useState({
-    name: "Matt",
-    email: "matt@example.com",
+    name: "",
+    email: "",
     age: "28",
     sex: "male",
     heightFt: "5",
@@ -50,19 +54,98 @@ export default function SettingsPage() {
   const [fatPct, setFatPct] = useState(25);
 
   const [prefs, setPrefs] = useState({
-    cuisines: ["Italian", "Asian", "Mediterranean"],
-    restrictions: ["Gluten-Free"],
-    allergies: ["peanuts"],
+    cuisines: [] as string[],
+    restrictions: [] as string[],
+    allergies: [] as string[],
     mealStructure: "3_plus_snacks",
   });
+
+  // Load profile on mount
+  useEffect(() => {
+    const supabase = createClient();
+    Promise.all([
+      supabase.auth.getUser(),
+      supabase.from("profiles").select("*").single(),
+    ]).then(([{ data: { user } }, { data: prof }]) => {
+      if (user) {
+        setUserId(user.id);
+        setProfile((p) => ({
+          ...p,
+          email: user.email ?? "",
+          name: prof?.display_name ?? "",
+          sex: prof?.sex ?? "male",
+          activityLevel: prof?.activity_level ?? "moderate",
+          goal: prof?.goal ?? "lose",
+        }));
+      }
+      if (prof) {
+        if (prof.height_cm) {
+          const totalInches = prof.height_cm / 2.54;
+          setProfile((p) => ({
+            ...p,
+            heightFt: String(Math.floor(totalInches / 12)),
+            heightIn: String(Math.round(totalInches % 12)),
+          }));
+        }
+        if (prof.birth_date) {
+          const age = new Date().getFullYear() - new Date(prof.birth_date).getFullYear();
+          setProfile((p) => ({ ...p, age: String(age) }));
+        }
+        if (prof.calorie_target) setCalories(prof.calorie_target);
+        if (prof.protein_g && prof.calorie_target) setProteinPct(Math.round((prof.protein_g * 4 / prof.calorie_target) * 100));
+        if (prof.carbs_g && prof.calorie_target) setCarbsPct(Math.round((prof.carbs_g * 4 / prof.calorie_target) * 100));
+        if (prof.fat_g && prof.calorie_target) setFatPct(Math.round((prof.fat_g * 9 / prof.calorie_target) * 100));
+        setPrefs({
+          cuisines: prof.cuisines ?? [],
+          restrictions: prof.dietary_restrictions ?? [],
+          allergies: prof.allergies ?? [],
+          mealStructure: prof.meal_structure ?? "3_plus_snacks",
+        });
+      }
+      setLoading(false);
+    });
+  }, []);
 
   const macros = calcMacros(calories, proteinPct, carbsPct, fatPct);
   const totalPct = proteinPct + carbsPct + fatPct;
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!userId) return;
+    setSaving(true);
+    const supabase = createClient();
+    const heightCm = ((parseInt(profile.heightFt) || 5) * 12 + (parseInt(profile.heightIn) || 0)) * 2.54;
+    const birthYear = new Date().getFullYear() - (parseInt(profile.age) || 28);
+
+    await supabase.from("profiles").update({
+      display_name: profile.name || null,
+      goal: profile.goal,
+      activity_level: profile.activityLevel,
+      sex: profile.sex,
+      height_cm: heightCm,
+      birth_date: `${birthYear}-01-01`,
+      calorie_target: calories,
+      protein_g: macros.protein,
+      carbs_g: macros.carbs,
+      fat_g: macros.fat,
+      cuisines: prefs.cuisines,
+      dietary_restrictions: prefs.restrictions,
+      allergies: prefs.allergies,
+      meal_structure: prefs.mealStructure,
+      updated_at: new Date().toISOString(),
+    }).eq("id", userId);
+
+    setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
+
+  if (loading) {
+    return (
+      <div className="p-6 flex items-center justify-center h-64">
+        <div className="text-gray-400 text-sm">Loading settings...</div>
+      </div>
+    );
+  }
 
   const toggleCuisine = (c: string) =>
     setPrefs((p) => ({ ...p, cuisines: p.cuisines.includes(c) ? p.cuisines.filter((x) => x !== c) : [...p.cuisines, c] }));
@@ -219,7 +302,7 @@ export default function SettingsPage() {
             )}
           </div>
 
-          <Button onClick={handleSave} fullWidth size="lg">Save Changes</Button>
+          <Button onClick={handleSave} disabled={saving} fullWidth size="lg">{saving ? "Saving..." : "Save Changes"}</Button>
         </Card>
       )}
 
@@ -293,7 +376,7 @@ export default function SettingsPage() {
               ))}
             </div>
 
-            <Button onClick={handleSave} fullWidth size="lg">Save Targets</Button>
+            <Button onClick={handleSave} disabled={saving} fullWidth size="lg">{saving ? "Saving..." : "Save Targets"}</Button>
           </Card>
         </div>
       )}
@@ -389,7 +472,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <Button onClick={handleSave} fullWidth size="lg">Save Preferences</Button>
+          <Button onClick={handleSave} disabled={saving} fullWidth size="lg">{saving ? "Saving..." : "Save Preferences"}</Button>
         </Card>
       )}
     </div>

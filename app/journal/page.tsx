@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import PageHeader from "@/components/shared/PageHeader";
 import FoodEntryRow from "@/components/shared/FoodEntryRow";
 import StatsCard from "@/components/shared/StatsCard";
 import AddMealModal, { LogEntry } from "@/components/journal/AddMealModal";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import type { LoggedMeal, DailyTotals } from "@/lib/types";
 
 type EntryMethod = "plan" | "recipe" | "search" | "text" | "photo" | "quick";
 
@@ -33,63 +34,148 @@ const slotIcon: Record<string, string> = {
   Snacks: "🍎",
 };
 
-const INITIAL_JOURNAL: Record<string, LogEntry[]> = {
-  Breakfast: [
-    { id: 1, name: "Overnight Oats with Berries", servings: 1, calories: 410, protein: 14, carbs: 68, fat: 9, method: "recipe" },
-    { id: 2, name: "Cold Brew Coffee", servings: 1, calories: 15, protein: 0, carbs: 3, fat: 0, method: "quick" },
-  ],
-  Lunch: [
-    { id: 3, name: "Turkey & Avocado Wrap", servings: 1.5, calories: 540, protein: 42, carbs: 52, fat: 18, method: "plan" },
-    { id: 4, name: "Mixed Green Salad", servings: 1, calories: 85, protein: 3, carbs: 8, fat: 5, method: "search" },
-  ],
-  Dinner: [],
-  Snacks: [
-    { id: 5, name: "Protein Bar", servings: 1, calories: 200, protein: 20, carbs: 22, fat: 7, method: "quick" },
-    { id: 6, name: "2 eggs and toast with butter", servings: 1, calories: 310, protein: 16, carbs: 28, fat: 14, method: "text" },
-  ],
-};
-
-const DATES = ["Jul 4, 2026", "Jul 5, 2026", "Jul 6, 2026"];
 const SLOTS = ["Breakfast", "Lunch", "Dinner", "Snacks"] as const;
 
+function toISO(date: Date): string {
+  return date.toISOString().split("T")[0];
+}
+
+function addDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function getMealName(meal: LoggedMeal): string {
+  if (meal.recipe_id && (meal as LoggedMeal & { recipe?: { name: string } }).recipe) {
+    return (meal as LoggedMeal & { recipe?: { name: string } }).recipe!.name;
+  }
+  return meal.custom_entry?.name ?? "Unknown";
+}
+
+function getMealMacros(meal: LoggedMeal) {
+  const s = meal.servings ?? 1;
+  const rec = (meal as LoggedMeal & { recipe?: { calories: number; protein_g: number; carbs_g: number; fat_g: number } }).recipe;
+  if (meal.recipe_id && rec) {
+    return {
+      calories: Math.round(rec.calories * s),
+      protein: Math.round(rec.protein_g * s),
+      carbs: Math.round(rec.carbs_g * s),
+      fat: Math.round(rec.fat_g * s),
+    };
+  }
+  const e = meal.custom_entry;
+  return {
+    calories: Math.round((e?.calories ?? 0) * s),
+    protein: Math.round((e?.protein_g ?? 0) * s),
+    carbs: Math.round((e?.carbs_g ?? 0) * s),
+    fat: Math.round((e?.fat_g ?? 0) * s),
+  };
+}
+
 export default function JournalPage() {
-  const [dateIdx, setDateIdx] = useState(2);
-  const [journal, setJournal] = useState(INITIAL_JOURNAL);
+  const [currentDate, setCurrentDate] = useState<Date>(() => new Date());
+  const [meals, setMeals] = useState<LoggedMeal[]>([]);
+  const [totals, setTotals] = useState<DailyTotals | null>(null);
+  const [targets, setTargets] = useState({ calories: 2000, protein_g: 150, carbs_g: 200, fat_g: 65 });
+  const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<{ open: boolean; slot: string }>({ open: false, slot: "Breakfast" });
-  const nextId = useRef(100);
+  const nextId = useRef(1000);
+
+  const dateStr = toISO(currentDate);
+
+  const fetchData = useCallback(async (date: string) => {
+    setLoading(true);
+    const [logsRes, dailyRes] = await Promise.all([
+      fetch(`/api/log?date=${date}`),
+      fetch(`/api/dashboard/daily?date=${date}`),
+    ]);
+
+    if (logsRes.ok) {
+      const { meals: data } = await logsRes.json();
+      setMeals(data ?? []);
+    }
+    if (dailyRes.ok) {
+      const data = await dailyRes.json();
+      setTargets(data.targets);
+      setTotals(data.totals);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchData(dateStr);
+  }, [dateStr, fetchData]);
 
   const openModal = (slot: string) => setModal({ open: true, slot });
   const closeModal = () => setModal({ open: false, slot: modal.slot });
 
-  const handleAdd = (slot: string, entries: Omit<LogEntry, "id">[]) => {
-    setJournal((prev) => ({
-      ...prev,
-      [slot]: [...(prev[slot] ?? []), ...entries.map((e) => ({ ...e, id: nextId.current++ }))],
-    }));
+  const handleAdd = async (slot: string, entries: Omit<LogEntry, "id">[]) => {
+    for (const entry of entries) {
+      const body = {
+        logged_date: dateStr,
+        meal_slot: slot,
+        entry_method: entry.method,
+        servings: entry.servings ?? 1,
+        recipe_id: entry.recipe_id ?? undefined,
+        custom_entry: entry.recipe_id ? undefined : {
+          name: entry.name,
+          calories: entry.calories,
+          protein_g: entry.protein,
+          carbs_g: entry.carbs,
+          fat_g: entry.fat,
+        },
+        photo_url: entry.photoUrl ?? undefined,
+      };
+
+      const res = await fetch("/api/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (res.ok) {
+        const { meal, daily_totals } = await res.json();
+        setMeals((prev) => [...prev, meal]);
+        if (daily_totals) setTotals(daily_totals);
+      }
+    }
   };
 
-  const handleDelete = (slot: string, id: number) => {
-    setJournal((prev) => ({ ...prev, [slot]: prev[slot].filter((e) => e.id !== id) }));
+  const handleDelete = async (mealId: string) => {
+    const res = await fetch(`/api/log?id=${mealId}`, { method: "DELETE" });
+    if (res.ok) {
+      const { daily_totals } = await res.json();
+      setMeals((prev) => prev.filter((m) => m.id !== mealId));
+      if (daily_totals) setTotals(daily_totals);
+    }
   };
 
-  const allEntries = Object.values(journal).flat();
-  const totalCal = allEntries.reduce((s, e) => s + e.calories, 0);
-  const totalProtein = allEntries.reduce((s, e) => s + e.protein, 0);
-  const totalCarbs = allEntries.reduce((s, e) => s + e.carbs, 0);
-  const totalFat = allEntries.reduce((s, e) => s + e.fat, 0);
+  const mealsBySlot = SLOTS.reduce((acc, slot) => {
+    acc[slot] = meals.filter((m) => m.meal_slot === slot);
+    return acc;
+  }, {} as Record<string, LoggedMeal[]>);
+
+  const t = totals ?? { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const cur = new Date(currentDate);
+  cur.setHours(0, 0, 0, 0);
+  const isToday = cur.getTime() === today.getTime();
+
+  const dateLabel = currentDate.toLocaleDateString("en-US", {
+    weekday: "short", month: "short", day: "numeric", year: "numeric",
+  });
 
   return (
     <>
       <div className="p-4 md:p-6 max-w-3xl mx-auto">
         <PageHeader title="Food Journal">
-          <Button
-            onClick={() => openModal("Breakfast")}
-            icon={
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            }
-          >
+          <Button onClick={() => openModal("Breakfast")} icon={
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          }>
             Add Food
           </Button>
         </PageHeader>
@@ -97,26 +183,25 @@ export default function JournalPage() {
         {/* Date navigator */}
         <div className="flex items-center gap-3 mb-5">
           <button
-            onClick={() => setDateIdx((i) => Math.max(0, i - 1))}
-            disabled={dateIdx === 0}
-            className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
+            onClick={() => setCurrentDate((d) => addDays(d, -1))}
+            className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <span className="text-base font-semibold text-gray-900 w-32 text-center">{DATES[dateIdx]}</span>
+          <span className="text-base font-semibold text-gray-900 min-w-[180px] text-center">{dateLabel}</span>
           <button
-            onClick={() => setDateIdx((i) => Math.min(DATES.length - 1, i + 1))}
-            disabled={dateIdx === DATES.length - 1}
+            onClick={() => setCurrentDate((d) => addDays(d, 1))}
+            disabled={isToday}
             className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
           </button>
-          {dateIdx < DATES.length - 1 && (
-            <button onClick={() => setDateIdx(DATES.length - 1)} className="text-sm text-brand-600 font-medium hover:text-brand-700">
+          {!isToday && (
+            <button onClick={() => setCurrentDate(new Date())} className="text-sm text-brand-600 font-medium hover:text-brand-700">
               Today
             </button>
           )}
@@ -124,69 +209,72 @@ export default function JournalPage() {
 
         {/* Daily summary strip */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          <StatsCard label="Calories" value={String(totalCal)} subtitle={`/ 2200 kcal`} valueColor="text-green-600" size="sm" />
-          <StatsCard label="Protein" value={`${totalProtein}g`} subtitle="/ 165g" valueColor="text-blue-600" size="sm" />
-          <StatsCard label="Carbs" value={`${totalCarbs}g`} subtitle="/ 220g" valueColor="text-amber-600" size="sm" />
-          <StatsCard label="Fat" value={`${totalFat}g`} subtitle="/ 73g" valueColor="text-rose-600" size="sm" />
+          <StatsCard label="Calories" value={String(t.calories)} subtitle={`/ ${targets.calories} kcal`} valueColor="text-green-600" size="sm" />
+          <StatsCard label="Protein" value={`${t.protein_g}g`} subtitle={`/ ${targets.protein_g}g`} valueColor="text-blue-600" size="sm" />
+          <StatsCard label="Carbs" value={`${t.carbs_g}g`} subtitle={`/ ${targets.carbs_g}g`} valueColor="text-amber-600" size="sm" />
+          <StatsCard label="Fat" value={`${t.fat_g}g`} subtitle={`/ ${targets.fat_g}g`} valueColor="text-rose-600" size="sm" />
         </div>
 
-        {/* Meal slots */}
-        <div className="space-y-4">
-          {SLOTS.map((slot) => {
-            const entries = journal[slot] ?? [];
-            const slotCal = entries.reduce((s, e) => s + e.calories, 0);
-            return (
-              <div
-                key={slot}
-                className={`bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden border-l-4 ${slotBorderColor[slot]}`}
-              >
-                <div className="px-5 py-3.5 flex items-center justify-between border-b border-gray-50">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{slotIcon[slot]}</span>
-                    <span className="font-semibold text-gray-900">{slot}</span>
+        {loading ? (
+          <div className="flex items-center justify-center h-40 text-gray-400 text-sm">Loading...</div>
+        ) : (
+          <div className="space-y-4">
+            {SLOTS.map((slot) => {
+              const slotMeals = mealsBySlot[slot] ?? [];
+              const slotCal = slotMeals.reduce((s, m) => s + getMealMacros(m).calories, 0);
+              return (
+                <div key={slot} className={`bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden border-l-4 ${slotBorderColor[slot]}`}>
+                  <div className="px-5 py-3.5 flex items-center justify-between border-b border-gray-50">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{slotIcon[slot]}</span>
+                      <span className="font-semibold text-gray-900">{slot}</span>
+                    </div>
+                    <span className="text-sm text-gray-500 font-medium">{slotCal} kcal</span>
                   </div>
-                  <span className="text-sm text-gray-500 font-medium">{slotCal} kcal</span>
+
+                  {slotMeals.length === 0 ? (
+                    <div className="px-5 py-4 text-sm text-gray-400 italic">No entries yet</div>
+                  ) : (
+                    <div className="divide-y divide-gray-50">
+                      {slotMeals.map((meal) => {
+                        const macros = getMealMacros(meal);
+                        return (
+                          <FoodEntryRow
+                            key={meal.id}
+                            name={getMealName(meal)}
+                            calories={macros.calories}
+                            protein={macros.protein}
+                            carbs={macros.carbs}
+                            fat={macros.fat}
+                            method={meal.entry_method as EntryMethod}
+                            methodBadge={methodBadge}
+                            servings={meal.servings}
+                            photoUrl={meal.photo_url ?? undefined}
+                            onDelete={() => handleDelete(meal.id)}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => openModal(slot)}
+                    className="w-full px-5 py-3 border-t border-dashed border-gray-200 text-sm text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add to {slot}
+                  </button>
                 </div>
-
-                {entries.length === 0 ? (
-                  <div className="px-5 py-4 text-sm text-gray-400 italic">No entries yet</div>
-                ) : (
-                  <div className="divide-y divide-gray-50">
-                    {entries.map((entry) => (
-                      <FoodEntryRow
-                        key={entry.id}
-                        name={entry.name}
-                        calories={entry.calories}
-                        protein={entry.protein}
-                        carbs={entry.carbs}
-                        fat={entry.fat}
-                        method={entry.method}
-                        methodBadge={methodBadge}
-                        servings={entry.servings}
-                        photoUrl={entry.photoUrl}
-                        onDelete={() => handleDelete(slot, entry.id)}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                <button
-                  onClick={() => openModal(slot)}
-                  className="w-full px-5 py-3 border-t border-dashed border-gray-200 text-sm text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors flex items-center gap-2"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Add to {slot}
-                </button>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {modal.open && (
-        <AddMealModal slot={modal.slot} onClose={closeModal} onAdd={handleAdd} />
+        <AddMealModal slot={modal.slot} onClose={closeModal} onAdd={handleAdd} currentDate={dateStr} />
       )}
     </>
   );

@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 const navItems = [
   {
@@ -32,6 +34,15 @@ const navItems = [
     ),
   },
   {
+    href: "/recipes",
+    label: "Recipes",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+      </svg>
+    ),
+  },
+  {
     href: "/grocery-list",
     label: "Grocery List",
     icon: (
@@ -53,6 +64,24 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUserEmail(user?.email ?? null);
+    });
+  }, []);
+
+  const handleSignOut = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/auth/login");
+    router.refresh();
+  };
+
+  const initials = userEmail ? userEmail[0].toUpperCase() : "?";
 
   return (
     <aside className="hidden md:flex w-64 bg-sidebar flex-shrink-0 flex-col h-full">
@@ -108,12 +137,20 @@ export default function Sidebar() {
 
         <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg">
           <div className="w-7 h-7 bg-brand-600 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-            M
+            {initials}
           </div>
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-white truncate">Matt</p>
-            <p className="text-xs text-gray-500 truncate">matt@example.com</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-gray-400 truncate">{userEmail ?? "Loading..."}</p>
           </div>
+          <button
+            onClick={handleSignOut}
+            className="text-gray-500 hover:text-white transition-colors"
+            title="Sign out"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+          </button>
         </div>
       </div>
     </aside>

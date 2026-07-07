@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 
 type EntryMethod = "plan" | "recipe" | "search" | "text" | "photo" | "quick";
 type AddTab = "plan" | "recipe" | "search" | "text" | "photo" | "quick";
@@ -17,6 +17,7 @@ export interface LogEntry {
   fat: number;
   method: EntryMethod;
   photoUrl?: string;
+  recipe_id?: string;
 }
 
 interface DetectedItem {
@@ -32,39 +33,7 @@ interface DetectedItem {
   removed: boolean;
 }
 
-const PLANNED_MEALS = [
-  { id: "pm1", slot: "Dinner", name: "Salmon & Roasted Veg", calories: 560, protein: 44, carbs: 28, fat: 26 },
-  { id: "pm2", slot: "Snacks", name: "Greek Yogurt", calories: 150, protein: 17, carbs: 12, fat: 3 },
-];
-
-const SAVED_RECIPES = [
-  { id: "r1", name: "Grilled Chicken Bowl", calories: 620, protein: 52, carbs: 68, fat: 22, cuisine: "American" },
-  { id: "r2", name: "Pasta Primavera", calories: 640, protein: 28, carbs: 88, fat: 18, cuisine: "Italian" },
-  { id: "r3", name: "Acai Bowl", calories: 460, protein: 12, carbs: 72, fat: 14, cuisine: "American" },
-  { id: "r4", name: "Veggie Omelette", calories: 380, protein: 28, carbs: 12, fat: 24, cuisine: "American" },
-  { id: "r5", name: "Shrimp Tacos", calories: 580, protein: 38, carbs: 62, fat: 19, cuisine: "Mexican" },
-  { id: "r6", name: "Teriyaki Salmon", calories: 580, protein: 48, carbs: 38, fat: 24, cuisine: "Japanese" },
-];
-
-const USDA_RESULTS = [
-  { id: "u1", name: "Chicken, broilers or fryers, breast, meat only, cooked", calories: 165, protein: 31, carbs: 0, fat: 4, per: "100g" },
-  { id: "u2", name: "Chicken breast, oven-roasted", calories: 147, protein: 30, carbs: 0, fat: 3, per: "100g" },
-  { id: "u3", name: "Chicken, rotisserie, breast, meat only", calories: 157, protein: 29, carbs: 0, fat: 4, per: "100g" },
-  { id: "u4", name: "Chicken sandwich, grilled", calories: 310, protein: 34, carbs: 28, fat: 7, per: "serving (180g)" },
-];
-
-const MOCK_DETECTIONS: DetectedItem[] = [
-  { id: "d1", name: "Grilled Salmon", estimatedQty: "6 oz", confidence: "high", usdaMatch: "Salmon, Atlantic, farmed, cooked, dry heat", calories: 354, protein: 38, carbs: 0, fat: 22, removed: false },
-  { id: "d2", name: "Roasted Broccoli", estimatedQty: "1 cup", confidence: "high", usdaMatch: "Broccoli, cooked, boiled, drained, without salt", calories: 55, protein: 4, carbs: 11, fat: 1, removed: false },
-  { id: "d3", name: "White Rice", estimatedQty: "¾ cup", confidence: "medium", usdaMatch: "Rice, white, long-grain, regular, cooked", calories: 169, protein: 3, carbs: 37, fat: 0, removed: false },
-  { id: "d4", name: "Olive Oil Drizzle", estimatedQty: "1 tbsp", confidence: "low", usdaMatch: "Oil, olive, salad or cooking", calories: 119, protein: 0, carbs: 0, fat: 14, removed: false },
-];
-
-const MOCK_PARSED: DetectedItem[] = [
-  { id: "t1", name: "Scrambled Eggs", estimatedQty: "2 large", confidence: "high", usdaMatch: "Egg, whole, cooked, scrambled", calories: 182, protein: 13, carbs: 3, fat: 13, removed: false },
-  { id: "t2", name: "Toast", estimatedQty: "2 slices", confidence: "high", usdaMatch: "Bread, whole-wheat, commercially prepared", calories: 138, protein: 6, carbs: 26, fat: 2, removed: false },
-  { id: "t3", name: "Butter", estimatedQty: "1 tbsp", confidence: "medium", usdaMatch: "Butter, without salt", calories: 102, protein: 0, carbs: 0, fat: 12, removed: false },
-];
+// Mock data removed — loaded from real APIs
 
 const confidenceConfig: Record<Confidence, { label: string; className: string; dot: string }> = {
   high: { label: "High confidence", className: "bg-green-50 text-green-700 border-green-200", dot: "bg-green-500" },
@@ -72,25 +41,65 @@ const confidenceConfig: Record<Confidence, { label: string; className: string; d
   low: { label: "Low confidence — please verify", className: "bg-red-50 text-red-700 border-red-200", dot: "bg-red-400" },
 };
 
+interface USDAResult {
+  fdcId: number;
+  description: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  per_100g: { calories: number; protein_g: number; carbs_g: number; fat_g: number };
+}
+
+interface SavedRecipe {
+  id: string;
+  name: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  cuisine: string | null;
+}
+
+interface PlannedMeal {
+  id: string;
+  slot: string;
+  name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
 interface AddMealModalProps {
   slot: string;
   onClose: () => void;
   onAdd: (slot: string, entries: Omit<LogEntry, "id">[]) => void;
+  currentDate?: string;
 }
 
-export default function AddMealModal({ slot, onClose, onAdd }: AddMealModalProps) {
+export default function AddMealModal({ slot, onClose, onAdd, currentDate }: AddMealModalProps) {
   const [tab, setTab] = useState<AddTab>("photo");
 
   const [planServings, setPlanServings] = useState<Record<string, number>>({});
+  const [plannedMeals, setPlannedMeals] = useState<PlannedMeal[]>([]);
+  const [planLoading, setPlanLoading] = useState(false);
+  const [planFetched, setPlanFetched] = useState(false);
 
+  const [savedRecipes, setSavedRecipes] = useState<SavedRecipe[]>([]);
+  const [recipesLoading, setRecipesLoading] = useState(false);
+  const [recipesFetched, setRecipesFetched] = useState(false);
   const [recipeSearch, setRecipeSearch] = useState("");
-  const [selectedRecipe, setSelectedRecipe] = useState<(typeof SAVED_RECIPES)[0] | null>(null);
+  const [selectedRecipe, setSelectedRecipe] = useState<SavedRecipe | null>(null);
   const [recipeServings, setRecipeServings] = useState(1);
 
   const [usdaQuery, setUsdaQuery] = useState("");
   const [usdaSearched, setUsdaSearched] = useState(false);
-  const [selectedUsda, setSelectedUsda] = useState<(typeof USDA_RESULTS)[0] | null>(null);
+  const [usdaSearching, setUsdaSearching] = useState(false);
+  const [usdaResults, setUsdaResults] = useState<USDAResult[]>([]);
+  const [selectedUsda, setSelectedUsda] = useState<USDAResult | null>(null);
   const [usdaServings, setUsdaServings] = useState(1);
+  const [usdaGrams, setUsdaGrams] = useState(100);
 
   const [parseText, setParseText] = useState("");
   const [parseState, setParseState] = useState<"idle" | "parsing" | "results">("idle");
@@ -103,31 +112,118 @@ export default function AddMealModal({ slot, onClose, onAdd }: AddMealModalProps
   const [quickFat, setQuickFat] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoFileRef = useRef<File | null>(null);
   const [photoState, setPhotoState] = useState<PhotoState>("idle");
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+  const [photoStorageUrl, setPhotoStorageUrl] = useState<string | null>(null);
   const [detections, setDetections] = useState<DetectedItem[]>([]);
 
+  // Load plan meals and recipes when tabs change
+  useEffect(() => {
+    if (tab === "plan" && !planFetched && !planLoading) {
+      setPlanLoading(true);
+      const today = currentDate ?? new Date().toISOString().split("T")[0];
+      // Parse as local noon (not UTC midnight) so getDay() returns the correct local weekday
+      const monday = new Date(today + "T12:00:00");
+      const day = monday.getDay();
+      monday.setDate(monday.getDate() - day + (day === 0 ? -6 : 1));
+      const weekStart = monday.toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
+      fetch(`/api/plan?week_start=${weekStart}`)
+        .then((r) => r.json())
+        .then(({ plan }) => {
+          if (plan?.plan) {
+            const meals: PlannedMeal[] = [];
+            // Use local date for comparison (plan keys are local-date ISO strings)
+            const localToday = new Date(today + "T12:00:00").toLocaleDateString("en-CA");
+            for (const [s, dayPlan] of Object.entries(plan.plan as Record<string, Record<string, { name: string; calories: number; protein: number; carbs: number; fat: number } | null>>)) {
+              if (s === localToday) {
+                for (const [mealSlot, meal] of Object.entries(dayPlan)) {
+                  if (meal) meals.push({ id: `${s}-${mealSlot}`, slot: mealSlot, name: meal.name, calories: meal.calories, protein: meal.protein, carbs: meal.carbs, fat: meal.fat });
+                }
+              }
+            }
+            setPlannedMeals(meals);
+          }
+          setPlanLoading(false);
+          setPlanFetched(true);
+        })
+        .catch(() => { setPlanLoading(false); setPlanFetched(true); });
+    }
+  }, [tab, planFetched, planLoading, currentDate]);
+
+  useEffect(() => {
+    if (tab === "recipe" && !recipesFetched && !recipesLoading) {
+      setRecipesLoading(true);
+      fetch("/api/recipes")
+        .then((r) => r.json())
+        .then(({ recipes }) => {
+          setSavedRecipes(recipes ?? []);
+          setRecipesLoading(false);
+          setRecipesFetched(true);
+        })
+        .catch(() => { setRecipesLoading(false); setRecipesFetched(true); });
+    }
+  }, [tab, recipesFetched, recipesLoading]);
+
   const handleFileSelect = (file: File) => {
+    photoFileRef.current = file;
     const url = URL.createObjectURL(file);
     setPhotoPreviewUrl(url);
     setPhotoState("preview");
   };
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
+    if (!photoFileRef.current) return;
     setPhotoState("analyzing");
-    setTimeout(() => {
-      setDetections(MOCK_DETECTIONS.map((d) => ({ ...d })));
-      setPhotoState("results");
-    }, 2200);
+    const formData = new FormData();
+    formData.append("photo", photoFileRef.current);
+    try {
+      const res = await fetch("/api/log/photo", { method: "POST", body: formData });
+      if (res.ok) {
+        const data = await res.json();
+        setDetections(data.items ?? []);
+        setPhotoStorageUrl(data.photo_url ?? null);
+      }
+    } catch {
+      // fallback: stay in analyzing, user can retry
+    }
+    setPhotoState("results");
   };
 
-  const handleParse = () => {
+  const handleSearch = async () => {
+    if (!usdaQuery.trim()) return;
+    setUsdaSearching(true);
+    setUsdaSearched(false);
+    try {
+      const res = await fetch(`/api/usda/search?q=${encodeURIComponent(usdaQuery)}&limit=8`);
+      if (res.ok) {
+        const { results } = await res.json();
+        setUsdaResults(results ?? []);
+      }
+    } catch {
+      setUsdaResults([]);
+    }
+    setUsdaSearched(true);
+    setUsdaSearching(false);
+  };
+
+  const handleParse = async () => {
     if (!parseText.trim()) return;
     setParseState("parsing");
-    setTimeout(() => {
-      setParsedItems(MOCK_PARSED.map((d) => ({ ...d })));
-      setParseState("results");
-    }, 1800);
+    try {
+      const res = await fetch("/api/log/text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: parseText }),
+      });
+      if (res.ok) {
+        const { items } = await res.json();
+        setParsedItems(items ?? []);
+      }
+    } catch {
+      setParsedItems([]);
+    }
+    setParseState("results");
   };
 
   const updateDetection = (id: string, field: keyof DetectedItem, value: string | number | boolean) => {
@@ -150,7 +246,7 @@ export default function AddMealModal({ slot, onClose, onAdd }: AddMealModalProps
         carbs: d.carbs,
         fat: d.fat,
         method: tab === "photo" ? "photo" : "text",
-        photoUrl: tab === "photo" ? (photoPreviewUrl ?? undefined) : undefined,
+        photoUrl: tab === "photo" ? (photoStorageUrl ?? photoPreviewUrl ?? undefined) : undefined,
       }))
     );
     onClose();
@@ -226,7 +322,7 @@ export default function AddMealModal({ slot, onClose, onAdd }: AddMealModalProps
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
           <div>
             <h2 className="text-base font-semibold text-gray-900">Add to {slot}</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Jul 6, 2026</p>
+            <p className="text-xs text-gray-400 mt-0.5">{currentDate ? new Date(currentDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
           </div>
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -449,7 +545,11 @@ export default function AddMealModal({ slot, onClose, onAdd }: AddMealModalProps
           {tab === "plan" && (
             <div className="p-5 space-y-3">
               <p className="text-xs text-gray-500 mb-4">Planned meals for today — tap to log with one click.</p>
-              {PLANNED_MEALS.map((meal) => {
+              {planLoading ? (
+                <div className="text-center py-8 text-gray-400 text-sm">Loading today&apos;s plan...</div>
+              ) : plannedMeals.length === 0 ? (
+                <div className="text-center py-8 text-gray-400 text-sm">No meals planned for today. Generate a meal plan first.</div>
+              ) : plannedMeals.map((meal) => {
                 const servings = planServings[meal.id] ?? 1;
                 return (
                   <div key={meal.id} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
@@ -497,6 +597,7 @@ export default function AddMealModal({ slot, onClose, onAdd }: AddMealModalProps
           )}
 
           {/* RECIPE TAB */}
+
           {tab === "recipe" && (
             <div className="p-5 space-y-4">
               <input
@@ -507,7 +608,11 @@ export default function AddMealModal({ slot, onClose, onAdd }: AddMealModalProps
                 className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
               <div className="space-y-2">
-                {SAVED_RECIPES.filter((r) => r.name.toLowerCase().includes(recipeSearch.toLowerCase())).map((recipe) => (
+                {recipesLoading ? (
+                  <div className="text-center py-8 text-gray-400 text-sm">Loading recipes...</div>
+                ) : savedRecipes.length === 0 ? (
+                  <div className="text-center py-8 text-gray-400 text-sm">No saved recipes yet. Generate some recipes first.</div>
+                ) : savedRecipes.filter((r) => r.name.toLowerCase().includes(recipeSearch.toLowerCase())).map((recipe) => (
                   <button
                     key={recipe.id}
                     onClick={() => { setSelectedRecipe(recipe); setRecipeServings(1); }}
@@ -543,9 +648,9 @@ export default function AddMealModal({ slot, onClose, onAdd }: AddMealModalProps
                     </div>
                     <div className="ml-auto flex gap-3 text-xs">
                       <span className="font-bold text-gray-900">{Math.round(selectedRecipe.calories * recipeServings)} kcal</span>
-                      <span className="text-blue-500">P {Math.round(selectedRecipe.protein * recipeServings)}g</span>
-                      <span className="text-amber-500">C {Math.round(selectedRecipe.carbs * recipeServings)}g</span>
-                      <span className="text-rose-500">F {Math.round(selectedRecipe.fat * recipeServings)}g</span>
+                      <span className="text-blue-500">P {Math.round(selectedRecipe.protein_g * recipeServings)}g</span>
+                      <span className="text-amber-500">C {Math.round(selectedRecipe.carbs_g * recipeServings)}g</span>
+                      <span className="text-rose-500">F {Math.round(selectedRecipe.fat_g * recipeServings)}g</span>
                     </div>
                   </div>
                 </div>
@@ -562,14 +667,15 @@ export default function AddMealModal({ slot, onClose, onAdd }: AddMealModalProps
                   placeholder="Search USDA FoodData Central…"
                   value={usdaQuery}
                   onChange={(e) => setUsdaQuery(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") setUsdaSearched(true); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSearch(); }}
                   className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
                 <button
-                  onClick={() => setUsdaSearched(true)}
-                  className="px-4 py-2.5 bg-brand-600 text-white rounded-xl text-sm font-medium hover:bg-brand-700"
+                  onClick={handleSearch}
+                  disabled={usdaSearching}
+                  className="px-4 py-2.5 bg-brand-600 text-white rounded-xl text-sm font-medium hover:bg-brand-700 disabled:opacity-60"
                 >
-                  Search
+                  {usdaSearching ? "..." : "Search"}
                 </button>
               </div>
               {!usdaSearched && (
@@ -577,36 +683,45 @@ export default function AddMealModal({ slot, onClose, onAdd }: AddMealModalProps
               )}
               {usdaSearched && (
                 <div className="space-y-2">
-                  <p className="text-xs text-gray-500">{USDA_RESULTS.length} results for &ldquo;{usdaQuery || "chicken"}&rdquo;</p>
-                  {USDA_RESULTS.map((item) => (
+                  <p className="text-xs text-gray-500">{usdaResults.length} results for &ldquo;{usdaQuery}&rdquo;</p>
+                  {usdaResults.length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-4">No results found. Try a different search term.</p>
+                  ) : usdaResults.map((item) => (
                     <button
-                      key={item.id}
-                      onClick={() => { setSelectedUsda(item); setUsdaServings(1); }}
-                      className={`w-full text-left p-3.5 rounded-xl border transition-all ${selectedUsda?.id === item.id ? "border-brand-500 bg-brand-50" : "border-gray-100 hover:border-gray-200 bg-white"}`}
+                      key={item.fdcId}
+                      onClick={() => { setSelectedUsda(item); setUsdaServings(1); setUsdaGrams(100); }}
+                      className={`w-full text-left p-3.5 rounded-xl border transition-all ${selectedUsda?.fdcId === item.fdcId ? "border-brand-500 bg-brand-50" : "border-gray-100 hover:border-gray-200 bg-white"}`}
                     >
-                      <p className={`text-xs font-semibold leading-snug ${selectedUsda?.id === item.id ? "text-brand-700" : "text-gray-800"}`}>{item.name}</p>
+                      <p className={`text-xs font-semibold leading-snug ${selectedUsda?.fdcId === item.fdcId ? "text-brand-700" : "text-gray-800"}`}>{item.description}</p>
                       <div className="flex gap-3 mt-1">
                         <span className="text-xs text-gray-500">{item.calories} kcal</span>
-                        <span className="text-xs text-blue-400">P {item.protein}g</span>
-                        <span className="text-xs text-amber-400">C {item.carbs}g</span>
-                        <span className="text-xs text-rose-400">F {item.fat}g</span>
-                        <span className="text-xs text-gray-300 ml-auto">per {item.per}</span>
+                        <span className="text-xs text-blue-400">P {item.protein_g}g</span>
+                        <span className="text-xs text-amber-400">C {item.carbs_g}g</span>
+                        <span className="text-xs text-rose-400">F {item.fat_g}g</span>
+                        <span className="text-xs text-gray-300 ml-auto">per 100g</span>
                       </div>
                     </button>
                   ))}
                 </div>
               )}
               {selectedUsda && (
-                <div className="border-t border-gray-100 pt-4 flex items-center gap-3">
-                  <span className="text-sm text-gray-600">Servings:</span>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => setUsdaServings((s) => Math.max(0.5, s - 0.5))} className="w-7 h-7 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-100">−</button>
-                    <span className="text-sm font-bold w-6 text-center">{usdaServings}</span>
-                    <button onClick={() => setUsdaServings((s) => s + 0.5)} className="w-7 h-7 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-100">+</button>
-                  </div>
-                  <div className="ml-auto flex gap-2 text-xs">
-                    <span className="font-bold text-gray-900">{Math.round(selectedUsda.calories * usdaServings)} kcal</span>
-                    <span className="text-blue-500">P {Math.round(selectedUsda.protein * usdaServings)}g</span>
+                <div className="border-t border-gray-100 pt-4 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-gray-600">Grams:</span>
+                    <input
+                      type="number"
+                      value={usdaGrams}
+                      min={1}
+                      step={10}
+                      onChange={(e) => setUsdaGrams(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-20 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                    <div className="ml-auto flex gap-2 text-xs">
+                      <span className="font-bold text-gray-900">{Math.round(selectedUsda.calories * usdaGrams / 100)} kcal</span>
+                      <span className="text-blue-500">P {Math.round(selectedUsda.protein_g * usdaGrams / 100)}g</span>
+                      <span className="text-amber-500">C {Math.round(selectedUsda.carbs_g * usdaGrams / 100)}g</span>
+                      <span className="text-rose-500">F {Math.round(selectedUsda.fat_g * usdaGrams / 100)}g</span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -767,7 +882,7 @@ export default function AddMealModal({ slot, onClose, onAdd }: AddMealModalProps
               disabled={!selectedRecipe}
               onClick={() => {
                 if (!selectedRecipe) return;
-                onAdd(slot, [{ name: selectedRecipe.name, servings: recipeServings, calories: Math.round(selectedRecipe.calories * recipeServings), protein: Math.round(selectedRecipe.protein * recipeServings), carbs: Math.round(selectedRecipe.carbs * recipeServings), fat: Math.round(selectedRecipe.fat * recipeServings), method: "recipe" }]);
+                onAdd(slot, [{ name: selectedRecipe.name, servings: recipeServings, calories: Math.round(selectedRecipe.calories * recipeServings), protein: Math.round(selectedRecipe.protein_g * recipeServings), carbs: Math.round(selectedRecipe.carbs_g * recipeServings), fat: Math.round(selectedRecipe.fat_g * recipeServings), method: "recipe", recipe_id: selectedRecipe.id }]);
                 onClose();
               }}
               className="w-full py-3 bg-brand-600 text-white rounded-xl font-semibold hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -780,7 +895,7 @@ export default function AddMealModal({ slot, onClose, onAdd }: AddMealModalProps
               disabled={!selectedUsda}
               onClick={() => {
                 if (!selectedUsda) return;
-                onAdd(slot, [{ name: selectedUsda.name.split(",")[0], servings: usdaServings, calories: Math.round(selectedUsda.calories * usdaServings), protein: Math.round(selectedUsda.protein * usdaServings), carbs: Math.round(selectedUsda.carbs * usdaServings), fat: Math.round(selectedUsda.fat * usdaServings), method: "search" }]);
+                onAdd(slot, [{ name: selectedUsda.description.split(",")[0], servings: 1, calories: Math.round(selectedUsda.calories * usdaGrams / 100), protein: Math.round(selectedUsda.protein_g * usdaGrams / 100), carbs: Math.round(selectedUsda.carbs_g * usdaGrams / 100), fat: Math.round(selectedUsda.fat_g * usdaGrams / 100), method: "search" }]);
                 onClose();
               }}
               className="w-full py-3 bg-brand-600 text-white rounded-xl font-semibold hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
