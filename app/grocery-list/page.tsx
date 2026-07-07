@@ -1,6 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import PageHeader from "@/components/shared/PageHeader";
+import CategorySection from "@/components/shared/CategorySection";
+import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
+import ProgressBar from "@/components/ui/ProgressBar";
+import PillBadge from "@/components/ui/PillBadge";
 
 interface GroceryItem {
   id: string;
@@ -81,7 +87,6 @@ const categories: Category[] = [
 ];
 
 const INITIAL_CHECKED = new Set(["p3", "d4", "pa1"]);
-
 const allItems = categories.flatMap((c) => c.items.map((i) => i.id));
 
 export default function GroceryListPage() {
@@ -103,31 +108,14 @@ export default function GroceryListPage() {
   const checkedCount = checked.size;
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Grocery List</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Week of Jun 30</p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={clearAll}
-            className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            Clear All
-          </button>
-          <button
-            onClick={markAll}
-            className="px-3 py-1.5 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors"
-          >
-            Mark All
-          </button>
-        </div>
-      </div>
+    <div className="p-4 md:p-6 max-w-2xl mx-auto">
+      <PageHeader title="Grocery List" subtitle="Week of Jun 30">
+        <Button variant="secondary" size="sm" onClick={clearAll}>Clear All</Button>
+        <Button variant="primary" size="sm" onClick={markAll}>Mark All</Button>
+      </PageHeader>
 
       {/* Stats strip */}
-      <div className="flex items-center gap-4 mb-6 px-4 py-3 bg-white rounded-xl border border-gray-100 shadow-sm">
+      <Card className="flex items-center gap-4 mb-6 px-4 py-3">
         <div className="flex items-center gap-1.5">
           <div className="w-2 h-2 rounded-full bg-brand-500" />
           <span className="text-sm text-gray-600">
@@ -137,34 +125,29 @@ export default function GroceryListPage() {
         <div className="h-4 w-px bg-gray-200" />
         <span className="text-sm text-gray-500">{categories.length} categories</span>
         <div className="ml-auto flex-1 max-w-32">
-          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-brand-500 rounded-full transition-all"
-              style={{ width: `${(checkedCount / totalItems) * 100}%` }}
-            />
-          </div>
+          <ProgressBar value={(checkedCount / totalItems) * 100} />
         </div>
         <span className="text-sm font-semibold text-brand-600">{Math.round((checkedCount / totalItems) * 100)}%</span>
-      </div>
+      </Card>
 
       {/* Categories */}
       <div className="space-y-4">
         {categories.map((cat) => {
           const catChecked = cat.items.filter((i) => checked.has(i.id)).length;
           return (
-            <div key={cat.name} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              {/* Category header */}
-              <div className={`px-5 py-3.5 border-b ${cat.headerColor} flex items-center justify-between`}>
-                <div className="flex items-center gap-2.5">
-                  <span className="text-xl">{cat.icon}</span>
-                  <span className="font-semibold text-gray-800">{cat.name}</span>
-                </div>
-                <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${catChecked === cat.items.length ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
-                  {catChecked} / {cat.items.length} acquired
-                </span>
-              </div>
-
-              {/* Items */}
+            <CategorySection
+              key={cat.name}
+              icon={cat.icon}
+              label={cat.name}
+              headerColorClass={`${cat.headerColor} border-b`}
+              badge={
+                <PillBadge
+                  label={`${catChecked} / ${cat.items.length} acquired`}
+                  className={catChecked === cat.items.length ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}
+                  size="sm"
+                />
+              }
+            >
               <div className="divide-y divide-gray-50">
                 {cat.items.map((item) => {
                   const isChecked = checked.has(item.id);
@@ -189,7 +172,7 @@ export default function GroceryListPage() {
                   );
                 })}
               </div>
-            </div>
+            </CategorySection>
           );
         })}
       </div>

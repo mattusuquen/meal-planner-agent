@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import PageHeader from "@/components/shared/PageHeader";
+import Button from "@/components/ui/Button";
 
 interface MealCell {
   name: string;
@@ -120,6 +122,7 @@ const slotColor: Record<string, string> = {
 
 export default function MealPlanPage() {
   const [weekIdx, setWeekIdx] = useState(0);
+  const [mobileDayIdx, setMobileDayIdx] = useState(6); // default to last day (today)
   const week = weeks[weekIdx];
   const days = Object.keys(week.plan);
 
@@ -128,50 +131,127 @@ export default function MealPlanPage() {
     return SLOTS.reduce((sum, slot) => sum + (meals[slot]?.calories ?? 0), 0);
   });
 
+  const weekNav = (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={() => setWeekIdx((i) => Math.max(0, i - 1))}
+        disabled={weekIdx === 0}
+        className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+      </button>
+      <button
+        onClick={() => setWeekIdx((i) => Math.min(weeks.length - 1, i + 1))}
+        disabled={weekIdx === weeks.length - 1}
+        className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+    </div>
+  );
+
   return (
-    <div className="p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Meal Plan</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Week of {week.label}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setWeekIdx((i) => Math.max(0, i - 1))}
-              disabled={weekIdx === 0}
-              className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <button
-              onClick={() => setWeekIdx((i) => Math.min(weeks.length - 1, i + 1))}
-              disabled={weekIdx === weeks.length - 1}
-              className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
-          <button className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors">
+    <div className="p-4 md:p-6">
+      <PageHeader title="Meal Plan" subtitle={`Week of ${week.label}`}>
+        {weekNav}
+        <Button
+          icon={
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
-            Generate Grocery List
-          </button>
+          }
+        >
+          Generate Grocery List
+        </Button>
+      </PageHeader>
+
+      {/* ── MOBILE: Day-by-day view ── */}
+      <div className="block md:hidden">
+        {/* Day selector strip */}
+        <div className="flex gap-1 overflow-x-auto pb-2 mb-4">
+          {days.map((day, i) => {
+            const total = dayTotals[i];
+            const isActive = mobileDayIdx === i;
+            return (
+              <button
+                key={day}
+                onClick={() => setMobileDayIdx(i)}
+                className={`flex-shrink-0 flex flex-col items-center px-3 py-2 rounded-xl border-2 transition-all ${
+                  isActive ? "border-brand-600 bg-brand-50" : "border-gray-100 bg-white hover:border-gray-200"
+                }`}
+              >
+                <span className={`text-xs font-semibold uppercase tracking-wide ${isActive ? "text-brand-600" : "text-gray-500"}`}>
+                  {day.split(" ")[0]}
+                </span>
+                <span className={`text-sm font-bold ${isActive ? "text-brand-700" : "text-gray-900"}`}>
+                  {day.split(" ").slice(1).join(" ")}
+                </span>
+                {total > 0 && (
+                  <span className={`text-xs mt-0.5 ${isActive ? "text-brand-600" : "text-gray-400"}`}>{total}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Selected day meals */}
+        <div className="space-y-3">
+          {SLOTS.map((slot) => {
+            const selectedDay = days[mobileDayIdx];
+            const meal = week.plan[selectedDay]?.[slot];
+            if (!meal) {
+              return (
+                <div
+                  key={slot}
+                  className="border-2 border-dashed border-gray-200 rounded-xl p-4 flex items-center gap-3 hover:border-brand-400 hover:bg-brand-50 cursor-pointer transition-colors group"
+                >
+                  <svg className="w-5 h-5 text-gray-300 group-hover:text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  <span className={`text-sm font-semibold ${slotColor[slot]}`}>{slot}</span>
+                  <span className="text-xs text-gray-300 group-hover:text-brand-500">Empty — tap to add</span>
+                </div>
+              );
+            }
+            return (
+              <div key={slot} className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+                <span className={`text-xs font-semibold uppercase tracking-wide ${slotColor[slot]}`}>{slot}</span>
+                <p className="text-sm font-medium text-gray-900 mt-1">{meal.name}</p>
+                <div className="flex items-center gap-3 mt-2">
+                  <span className="text-sm font-semibold text-gray-700">{meal.calories} kcal</span>
+                  <span className="text-xs text-blue-500">P{meal.protein}</span>
+                  <span className="text-xs text-amber-500">C{meal.carbs}</span>
+                  <span className="text-xs text-rose-500">F{meal.fat}</span>
+                  <button className="ml-auto p-1.5 rounded-lg hover:bg-gray-100 text-gray-300 hover:text-gray-500 transition-colors">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Day total */}
+          <div className="text-center py-2 border-t border-gray-100">
+            <span className="text-xs text-gray-500">Daily total: </span>
+            <span className={`text-sm font-bold ${dayTotals[mobileDayIdx] > 0 ? (Math.abs(dayTotals[mobileDayIdx] - 2200) < 200 ? "text-green-600" : "text-gray-700") : "text-gray-300"}`}>
+              {dayTotals[mobileDayIdx] > 0 ? `${dayTotals[mobileDayIdx]} kcal` : "—"}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Grid */}
-      <div className="overflow-x-auto">
+      {/* ── DESKTOP: 7-column grid ── */}
+      <div className="hidden md:block overflow-x-auto">
         <div className="min-w-[960px]">
           {/* Day headers */}
           <div className="grid grid-cols-7 gap-2 mb-2">
-            {days.map((day, i) => (
+            {days.map((day) => (
               <div key={day} className="text-center">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   {day.split(" ")[0]}

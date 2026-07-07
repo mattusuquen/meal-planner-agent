@@ -1,6 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import PageHeader from "@/components/shared/PageHeader";
+import TabSwitcher from "@/components/shared/TabSwitcher";
+import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
 
 type SettingsTab = "profile" | "nutrition" | "preferences";
 
@@ -27,7 +31,6 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [allergyInput, setAllergyInput] = useState("");
 
-  // Profile state
   const [profile, setProfile] = useState({
     name: "Matt",
     email: "matt@example.com",
@@ -41,13 +44,11 @@ export default function SettingsPage() {
     targetRate: "1.0",
   });
 
-  // Nutrition state
   const [calories, setCalories] = useState(2200);
   const [proteinPct, setProteinPct] = useState(30);
   const [carbsPct, setCarbsPct] = useState(45);
   const [fatPct, setFatPct] = useState(25);
 
-  // Preferences state
   const [prefs, setPrefs] = useState({
     cuisines: ["Italian", "Asian", "Mediterranean"],
     restrictions: ["Gluten-Free"],
@@ -83,39 +84,24 @@ export default function SettingsPage() {
     { value: "preferences", label: "Preferences" },
   ];
 
-  return (
-    <div className="p-6 max-w-2xl mx-auto">
-      {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        {saved && (
-          <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700 font-medium">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-            Saved!
-          </div>
-        )}
-      </div>
+  const savedIndicator = saved ? (
+    <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700 font-medium">
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+      </svg>
+      Saved!
+    </div>
+  ) : null;
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-6">
-        {tabs.map((t) => (
-          <button
-            key={t.value}
-            onClick={() => setTab(t.value)}
-            className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-              tab === t.value ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+  return (
+    <div className="p-4 md:p-6 max-w-2xl mx-auto">
+      <PageHeader title="Settings">{savedIndicator}</PageHeader>
+
+      <TabSwitcher tabs={tabs} value={tab} onChange={setTab} fullWidth scrollable className="mb-6" />
 
       {/* Profile tab */}
       {tab === "profile" && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-5">
+        <Card className="p-6 space-y-5">
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Name</label>
@@ -233,16 +219,14 @@ export default function SettingsPage() {
             )}
           </div>
 
-          <button onClick={handleSave} className="w-full py-3 bg-brand-600 text-white rounded-xl font-semibold hover:bg-brand-700 transition-colors">
-            Save Changes
-          </button>
-        </div>
+          <Button onClick={handleSave} fullWidth size="lg">Save Changes</Button>
+        </Card>
       )}
 
       {/* Nutrition Targets tab */}
       {tab === "nutrition" && (
         <div className="space-y-4">
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-5">
+          <Card className="p-6 space-y-5">
             <div>
               <div className="flex justify-between items-center mb-1.5">
                 <label className="text-sm font-medium text-gray-700">Daily Calories</label>
@@ -293,7 +277,7 @@ export default function SettingsPage() {
             ))}
 
             {/* Live macro breakdown */}
-            <div className="grid grid-cols-4 gap-3 pt-2 border-t border-gray-100">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-gray-100">
               {[
                 { label: "Calories", value: calories, unit: "kcal", color: "bg-green-500" },
                 { label: "Protein", value: macros.protein, unit: "g", color: "bg-blue-500" },
@@ -309,16 +293,14 @@ export default function SettingsPage() {
               ))}
             </div>
 
-            <button onClick={handleSave} className="w-full py-3 bg-brand-600 text-white rounded-xl font-semibold hover:bg-brand-700 transition-colors">
-              Save Targets
-            </button>
-          </div>
+            <Button onClick={handleSave} fullWidth size="lg">Save Targets</Button>
+          </Card>
         </div>
       )}
 
       {/* Preferences tab */}
       {tab === "preferences" && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-6">
+        <Card className="p-6 space-y-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Favorite cuisines</label>
             <div className="flex flex-wrap gap-2">
@@ -368,9 +350,7 @@ export default function SettingsPage() {
                 placeholder="Add allergy..."
                 className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
-              <button onClick={addAllergy} className="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700">
-                Add
-              </button>
+              <Button onClick={addAllergy}>Add</Button>
             </div>
             <div className="flex flex-wrap gap-2">
               {prefs.allergies.map((a) => (
@@ -389,7 +369,7 @@ export default function SettingsPage() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Meal structure</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {[
                 { value: "3_meals", label: "3 Meals", sub: "Breakfast, lunch, dinner" },
                 { value: "3_plus_snacks", label: "3 + Snacks", sub: "Meals with snacks" },
@@ -409,10 +389,8 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <button onClick={handleSave} className="w-full py-3 bg-brand-600 text-white rounded-xl font-semibold hover:bg-brand-700 transition-colors">
-            Save Preferences
-          </button>
-        </div>
+          <Button onClick={handleSave} fullWidth size="lg">Save Preferences</Button>
+        </Card>
       )}
     </div>
   );

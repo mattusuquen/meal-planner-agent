@@ -11,6 +11,10 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import PageHeader from "@/components/shared/PageHeader";
+import StatsCard from "@/components/shared/StatsCard";
+import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
 
 interface WeightEntry {
   date: string;
@@ -83,65 +87,54 @@ export default function WeightPage() {
   };
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Weight Tracker</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Jun 9 – Jul 6, 2026</p>
-      </div>
+    <div className="p-4 md:p-6 max-w-3xl mx-auto">
+      <PageHeader title="Weight Tracker" subtitle="Jun 9 – Jul 6, 2026" />
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        {[
-          { label: "Current", value: `${currentWeight} lbs`, color: "text-gray-900" },
-          { label: "Starting", value: `${startWeight} lbs`, color: "text-gray-500" },
-          {
-            label: "Total Change",
-            value: `${totalChange > 0 ? "+" : ""}${totalChange} lbs`,
-            color: totalChange < 0 ? "text-green-600" : "text-red-500",
-          },
-          {
-            label: "Weekly Rate",
-            value: `${weeklyRate > 0 ? "+" : ""}${weeklyRate} lbs/wk`,
-            color: weeklyRate < 0 ? "text-green-600" : "text-amber-600",
-          },
-        ].map((s) => (
-          <div key={s.label} className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-            <p className="text-xs text-gray-500">{s.label}</p>
-            <p className={`text-xl font-bold mt-1 ${s.color}`}>{s.value}</p>
-          </div>
-        ))}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <StatsCard label="Current" value={`${currentWeight} lbs`} size="sm" />
+        <StatsCard label="Starting" value={`${startWeight} lbs`} valueColor="text-gray-500" size="sm" />
+        <StatsCard
+          label="Total Change"
+          value={`${totalChange > 0 ? "+" : ""}${totalChange} lbs`}
+          valueColor={totalChange < 0 ? "text-green-600" : "text-red-500"}
+          size="sm"
+        />
+        <StatsCard
+          label="Weekly Rate"
+          value={`${weeklyRate > 0 ? "+" : ""}${weeklyRate} lbs/wk`}
+          valueColor={weeklyRate < 0 ? "text-green-600" : "text-amber-600"}
+          size="sm"
+        />
       </div>
 
       {/* Log entry */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+      <Card className="p-5 mb-6">
         <h2 className="font-semibold text-gray-900 mb-3">Log Today&apos;s Weight</h2>
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <input
             type="date"
             value={newDate}
             onChange={(e) => setNewDate(e.target.value)}
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
-          <input
-            type="number"
-            value={newWeight}
-            onChange={(e) => setNewWeight(e.target.value)}
-            placeholder="e.g. 183.5"
-            step="0.1"
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 w-36"
-          />
-          <span className="text-sm text-gray-400 self-center">lbs</span>
-          <button
-            onClick={handleLog}
-            className="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors"
-          >
-            Log Entry
-          </button>
+          <div className="flex gap-2 items-center">
+            <input
+              type="number"
+              value={newWeight}
+              onChange={(e) => setNewWeight(e.target.value)}
+              placeholder="e.g. 183.5"
+              step="0.1"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 w-36"
+            />
+            <span className="text-sm text-gray-400">lbs</span>
+          </div>
+          <Button onClick={handleLog}>Log Entry</Button>
         </div>
-      </div>
+      </Card>
 
       {/* Chart */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+      <Card className="p-5 mb-6">
         <h2 className="font-semibold text-gray-900 mb-4">Weight Trend</h2>
         <ResponsiveContainer width="100%" height={280}>
           <LineChart data={chartData}>
@@ -150,30 +143,14 @@ export default function WeightPage() {
             <YAxis domain={[179, 188]} tick={{ fontSize: 12 }} tickFormatter={(v) => `${v}`} />
             <Tooltip formatter={(v) => [`${v} lbs`]} />
             <Legend />
-            <Line
-              type="monotone"
-              dataKey="weight"
-              stroke="#94a3b8"
-              strokeWidth={1.5}
-              dot={{ r: 3, fill: "#94a3b8" }}
-              name="Daily Weight"
-            />
-            <Line
-              type="monotone"
-              dataKey="rolling"
-              stroke="#22c55e"
-              strokeWidth={2.5}
-              dot={false}
-              strokeDasharray="0"
-              connectNulls
-              name="7-Day Avg"
-            />
+            <Line type="monotone" dataKey="weight" stroke="#94a3b8" strokeWidth={1.5} dot={{ r: 3, fill: "#94a3b8" }} name="Daily Weight" />
+            <Line type="monotone" dataKey="rolling" stroke="#22c55e" strokeWidth={2.5} dot={false} strokeDasharray="0" connectNulls name="7-Day Avg" />
           </LineChart>
         </ResponsiveContainer>
-      </div>
+      </Card>
 
       {/* Log table */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <Card className="overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <h2 className="font-semibold text-gray-900">Entry History</h2>
           <span className="text-sm text-gray-400">{entries.length} entries</span>
@@ -203,7 +180,7 @@ export default function WeightPage() {
             );
           })}
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
