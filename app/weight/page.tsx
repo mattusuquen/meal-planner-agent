@@ -15,6 +15,8 @@ import PageHeader from "@/components/shared/PageHeader";
 import StatsCard from "@/components/shared/StatsCard";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import Skeleton from "@/components/ui/Skeleton";
+import FadeIn from "@/components/ui/FadeIn";
 import type { WeightEntry } from "@/lib/types";
 
 interface DisplayEntry {
@@ -154,7 +156,29 @@ export default function WeightPage() {
       </Card>
 
       {loading ? (
-        <div className="flex items-center justify-center h-40 text-gray-400 text-sm">Loading...</div>
+        <>
+          <Card className="p-5 mb-6">
+            <Skeleton className="h-5 w-28 mb-4" />
+            <Skeleton className="w-full h-[280px]" />
+          </Card>
+          <Card className="overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <Skeleton className="h-5 w-28" />
+              <Skeleton className="h-4 w-16" />
+            </div>
+            <div className="divide-y divide-gray-50">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="px-5 py-3 flex items-center justify-between">
+                  <Skeleton className="h-4 w-16" />
+                  <div className="flex items-center gap-4">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-5 w-16 rounded-full" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </>
       ) : entries.length === 0 ? (
         <Card className="p-12 text-center text-gray-400 text-sm">
           No weight entries yet. Log your first weight above.
@@ -162,27 +186,30 @@ export default function WeightPage() {
       ) : (
         <>
           {/* Chart */}
-          <Card className="p-5 mb-6">
-            <h2 className="font-semibold text-gray-900 mb-4">Weight Trend</h2>
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} interval={Math.max(1, Math.floor(entries.length / 10))} />
-                <YAxis domain={[weightMin, weightMax]} tick={{ fontSize: 12 }} tickFormatter={(v) => `${v}`} />
-                <Tooltip formatter={(v) => [`${v} lbs`]} />
-                <Legend />
-                <Line type="monotone" dataKey="weight" stroke="#94a3b8" strokeWidth={1.5} dot={{ r: 3, fill: "#94a3b8" }} name="Daily Weight" />
-                <Line type="monotone" dataKey="rolling" stroke="#22c55e" strokeWidth={2.5} dot={false} connectNulls name="7-Day Avg" />
-              </LineChart>
-            </ResponsiveContainer>
-          </Card>
+          <FadeIn delay={0}>
+            <Card className="p-5 mb-6">
+              <h2 className="font-semibold text-gray-900 mb-4">Weight Trend</h2>
+              <ResponsiveContainer width="100%" height={280}>
+                <LineChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} interval={Math.max(1, Math.floor(entries.length / 10))} />
+                  <YAxis domain={[weightMin, weightMax]} tick={{ fontSize: 12 }} tickFormatter={(v) => `${v}`} />
+                  <Tooltip formatter={(v) => [`${v} lbs`]} />
+                  <Legend />
+                  <Line type="monotone" dataKey="weight" stroke="#94a3b8" strokeWidth={1.5} dot={{ r: 3, fill: "#94a3b8" }} name="Daily Weight" />
+                  <Line type="monotone" dataKey="rolling" stroke="#22c55e" strokeWidth={2.5} dot={false} connectNulls name="7-Day Avg" />
+                </LineChart>
+              </ResponsiveContainer>
+            </Card>
+          </FadeIn>
 
           {/* Log table */}
-          <Card className="overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="font-semibold text-gray-900">Entry History</h2>
-              <span className="text-sm text-gray-400">{entries.length} entries</span>
-            </div>
+          <FadeIn delay={80}>
+            <Card className="overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                <h2 className="font-semibold text-gray-900">Entry History</h2>
+                <span className="text-sm text-gray-400">{entries.length} entries</span>
+              </div>
             <div className="max-h-64 overflow-y-auto divide-y divide-gray-50">
               {[...entries].reverse().map((entry, idx, arr) => {
                 const prev = arr[idx + 1];
@@ -210,7 +237,8 @@ export default function WeightPage() {
                 );
               })}
             </div>
-          </Card>
+            </Card>
+          </FadeIn>
         </>
       )}
     </div>

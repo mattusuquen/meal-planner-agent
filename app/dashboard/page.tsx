@@ -22,6 +22,8 @@ import FoodEntryRow from "@/components/shared/FoodEntryRow";
 import PageHeader from "@/components/shared/PageHeader";
 import Card from "@/components/ui/Card";
 import ProgressBar from "@/components/ui/ProgressBar";
+import Skeleton from "@/components/ui/Skeleton";
+import FadeIn from "@/components/ui/FadeIn";
 import type { DailyTotals, LoggedMeal, WeightEntry } from "@/lib/types";
 
 type Tab = "daily" | "weekly" | "monthly" | "progress";
@@ -190,59 +192,98 @@ export default function DashboardPage() {
       {tab === "daily" && (
         <div className="space-y-6">
           {dailyLoading ? (
-            <div className="h-40 flex items-center justify-center text-gray-400 text-sm">Loading...</div>
-          ) : (
             <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <MacroRingCard label="Calories" consumed={t.calories} target={targets.calories} color="#22c55e" unit="kcal" />
-                <MacroRingCard label="Protein" consumed={t.protein_g} target={targets.protein_g} color="#3b82f6" unit="g" />
-                <MacroRingCard label="Carbs" consumed={t.carbs_g} target={targets.carbs_g} color="#f59e0b" unit="g" />
-                <MacroRingCard label="Fat" consumed={t.fat_g} target={targets.fat_g} color="#f43f5e" unit="g" />
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col items-center gap-3">
+                    <Skeleton className="w-20 h-20 rounded-full" />
+                    <Skeleton className="h-4 w-16" />
+                    <Skeleton className="h-3 w-12" />
+                  </div>
+                ))}
               </div>
-
               <Card className="p-4">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm font-medium text-gray-700">Calorie Budget</span>
-                  <span className="text-sm text-gray-500">
-                    {t.calories} / {targets.calories} kcal
-                  </span>
+                <div className="flex justify-between mb-2">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-4 w-24" />
                 </div>
-                <ProgressBar value={calPct} height="md" />
-                <p className="text-xs text-gray-400 mt-1.5">
-                  {Math.max(0, targets.calories - t.calories)} kcal remaining
-                </p>
+                <Skeleton className="h-3 w-full rounded-full" />
+                <Skeleton className="h-3 w-20 mt-1.5" />
               </Card>
-
               <Card className="overflow-hidden">
                 <div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center">
-                  <h2 className="font-semibold text-gray-900">Today&apos;s Log</h2>
-                  <a href="/journal" className="text-sm text-brand-600 font-medium hover:text-brand-700">+ Add food</a>
+                  <Skeleton className="h-5 w-24" />
+                  <Skeleton className="h-4 w-16" />
                 </div>
-                {meals.length === 0 ? (
-                  <div className="px-5 py-10 text-center text-gray-400 text-sm">
-                    No meals logged today. <a href="/journal" className="text-brand-600 hover:underline">Add your first meal →</a>
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="px-5 py-3.5 flex items-center gap-3 border-b border-gray-50">
+                    <Skeleton className="h-4 w-40" />
+                    <div className="ml-auto flex gap-3">
+                      <Skeleton className="h-4 w-12" />
+                      <Skeleton className="h-4 w-12" />
+                    </div>
                   </div>
-                ) : (
-                  <div className="divide-y divide-gray-50">
-                    {meals.map((meal) => {
-                      const macros = getMealMacros(meal);
-                      return (
-                        <FoodEntryRow
-                          key={meal.id}
-                          name={getMealName(meal)}
-                          calories={macros.calories}
-                          protein={macros.protein}
-                          carbs={macros.carbs}
-                          fat={macros.fat}
-                          slot={meal.meal_slot}
-                          slotColors={slotColors}
-                          time={new Date(meal.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
+                ))}
               </Card>
+            </>
+          ) : (
+            <>
+              <FadeIn delay={0}>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <MacroRingCard label="Calories" consumed={t.calories} target={targets.calories} color="#22c55e" unit="kcal" />
+                  <MacroRingCard label="Protein" consumed={t.protein_g} target={targets.protein_g} color="#3b82f6" unit="g" />
+                  <MacroRingCard label="Carbs" consumed={t.carbs_g} target={targets.carbs_g} color="#f59e0b" unit="g" />
+                  <MacroRingCard label="Fat" consumed={t.fat_g} target={targets.fat_g} color="#f43f5e" unit="g" />
+                </div>
+              </FadeIn>
+
+              <FadeIn delay={80}>
+                <Card className="p-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm font-medium text-gray-700">Calorie Budget</span>
+                    <span className="text-sm text-gray-500">
+                      {t.calories} / {targets.calories} kcal
+                    </span>
+                  </div>
+                  <ProgressBar value={calPct} height="md" />
+                  <p className="text-xs text-gray-400 mt-1.5">
+                    {Math.max(0, targets.calories - t.calories)} kcal remaining
+                  </p>
+                </Card>
+              </FadeIn>
+
+              <FadeIn delay={160}>
+                <Card className="overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center">
+                    <h2 className="font-semibold text-gray-900">Today&apos;s Log</h2>
+                    <a href="/journal" className="text-sm text-brand-600 font-medium hover:text-brand-700">+ Add food</a>
+                  </div>
+                  {meals.length === 0 ? (
+                    <div className="px-5 py-10 text-center text-gray-400 text-sm">
+                      No meals logged today. <a href="/journal" className="text-brand-600 hover:underline">Add your first meal →</a>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-50">
+                      {meals.map((meal) => {
+                        const macros = getMealMacros(meal);
+                        return (
+                          <FoodEntryRow
+                            key={meal.id}
+                            name={getMealName(meal)}
+                            calories={macros.calories}
+                            protein={macros.protein}
+                            carbs={macros.carbs}
+                            fat={macros.fat}
+                            slot={meal.meal_slot}
+                            slotColors={slotColors}
+                            time={new Date(meal.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                </Card>
+              </FadeIn>
             </>
           )}
         </div>
@@ -252,34 +293,52 @@ export default function DashboardPage() {
       {tab === "weekly" && (
         <div className="space-y-6">
           {trendsLoading ? (
-            <div className="h-40 flex items-center justify-center text-gray-400 text-sm">Loading...</div>
-          ) : (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <StatsCard label="Avg Calories" value={trendsSummary ? `${trendsSummary.avg_calories.toLocaleString()}` : "—"} subtitle={`vs ${targets.calories.toLocaleString()} target`} />
-                <StatsCard label="Adherence" value={trendsSummary ? `${trendsSummary.adherence_days}/${trendsSummary.total_days} days` : "—"} subtitle="within ±10%" />
-                <StatsCard label="Avg Protein" value={trendsSummary ? `${trendsSummary.avg_protein}g` : "—"} subtitle={`vs ${targets.protein_g}g target`} />
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                    <Skeleton className="h-3 w-20 mb-2" />
+                    <Skeleton className="h-7 w-24 mb-1" />
+                    <Skeleton className="h-3 w-28" />
+                  </div>
+                ))}
               </div>
-              {weeklyChartData.length > 0 ? (
-                <Card className="p-5">
-                  <h2 className="font-semibold text-gray-900 mb-4">7-Day Trend</h2>
-                  <ResponsiveContainer width="100%" height={280}>
-                    <LineChart data={weeklyChartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                      <XAxis dataKey="day" tick={{ fontSize: 12 }} />
-                      <YAxis tick={{ fontSize: 12 }} />
-                      <Tooltip />
-                      <Legend />
-                      <Line type="monotone" dataKey="calories" stroke="#22c55e" strokeWidth={2} dot={{ r: 4 }} name="Calories" />
-                      <Line type="monotone" dataKey="protein" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} name="Protein (g)" />
-                      <Line type="monotone" dataKey="carbs" stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} name="Carbs (g)" />
-                      <Line type="monotone" dataKey="fat" stroke="#f43f5e" strokeWidth={2} dot={{ r: 4 }} name="Fat (g)" />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </Card>
-              ) : (
-                <Card className="p-12 text-center text-gray-400 text-sm">No data yet. Start logging meals to see trends.</Card>
-              )}
+              <Card className="p-5">
+                <Skeleton className="h-5 w-28 mb-4" />
+                <Skeleton className="w-full h-[280px]" />
+              </Card>
+            </>
+          ) : (
+            <>
+              <FadeIn delay={0}>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <StatsCard label="Avg Calories" value={trendsSummary ? `${trendsSummary.avg_calories.toLocaleString()}` : "—"} subtitle={`vs ${targets.calories.toLocaleString()} target`} />
+                  <StatsCard label="Adherence" value={trendsSummary ? `${trendsSummary.adherence_days}/${trendsSummary.total_days} days` : "—"} subtitle="within ±10%" />
+                  <StatsCard label="Avg Protein" value={trendsSummary ? `${trendsSummary.avg_protein}g` : "—"} subtitle={`vs ${targets.protein_g}g target`} />
+                </div>
+              </FadeIn>
+              <FadeIn delay={80}>
+                {weeklyChartData.length > 0 ? (
+                  <Card className="p-5">
+                    <h2 className="font-semibold text-gray-900 mb-4">7-Day Trend</h2>
+                    <ResponsiveContainer width="100%" height={280}>
+                      <LineChart data={weeklyChartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                        <XAxis dataKey="day" tick={{ fontSize: 12 }} />
+                        <YAxis tick={{ fontSize: 12 }} />
+                        <Tooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="calories" stroke="#22c55e" strokeWidth={2} dot={{ r: 4 }} name="Calories" />
+                        <Line type="monotone" dataKey="protein" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} name="Protein (g)" />
+                        <Line type="monotone" dataKey="carbs" stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} name="Carbs (g)" />
+                        <Line type="monotone" dataKey="fat" stroke="#f43f5e" strokeWidth={2} dot={{ r: 4 }} name="Fat (g)" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </Card>
+                ) : (
+                  <Card className="p-12 text-center text-gray-400 text-sm">No data yet. Start logging meals to see trends.</Card>
+                )}
+              </FadeIn>
             </>
           )}
         </div>
@@ -289,10 +348,14 @@ export default function DashboardPage() {
       {tab === "monthly" && (
         <div className="space-y-6">
           {trendsLoading ? (
-            <div className="h-40 flex items-center justify-center text-gray-400 text-sm">Loading...</div>
-          ) : monthlyChartData.length > 0 ? (
             <Card className="p-5">
-              <h2 className="font-semibold text-gray-900 mb-4">30-Day Calorie Trend</h2>
+              <Skeleton className="h-5 w-44 mb-4" />
+              <Skeleton className="w-full h-[280px]" />
+            </Card>
+          ) : monthlyChartData.length > 0 ? (
+            <FadeIn delay={0}>
+              <Card className="p-5">
+                <h2 className="font-semibold text-gray-900 mb-4">30-Day Calorie Trend</h2>
               <ResponsiveContainer width="100%" height={280}>
                 <AreaChart data={monthlyChartData}>
                   <defs>
@@ -310,9 +373,12 @@ export default function DashboardPage() {
                   <Line type="monotone" dataKey="target" stroke="#d1d5db" strokeWidth={1.5} strokeDasharray="4 4" dot={false} name="Target" />
                 </AreaChart>
               </ResponsiveContainer>
-            </Card>
+              </Card>
+            </FadeIn>
           ) : (
-            <Card className="p-12 text-center text-gray-400 text-sm">No data yet. Start logging meals to see trends.</Card>
+            <FadeIn delay={0}>
+              <Card className="p-12 text-center text-gray-400 text-sm">No data yet. Start logging meals to see trends.</Card>
+            </FadeIn>
           )}
         </div>
       )}
@@ -321,47 +387,65 @@ export default function DashboardPage() {
       {tab === "progress" && (
         <div className="space-y-6">
           {progressLoading ? (
-            <div className="h-40 flex items-center justify-center text-gray-400 text-sm">Loading...</div>
-          ) : (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <StatsCard
-                  label="Current Weight"
-                  value={currentWeight ? `${currentWeight.toFixed(1)} lbs` : "—"}
-                  subtitle={weightChange !== null ? `${weightChange >= 0 ? "+" : ""}${weightChange.toFixed(1)} lbs total` : "No data"}
-                  valueColor={weightChange !== null && weightChange < 0 ? "text-green-600" : undefined}
-                  size="sm"
-                />
-                <StatsCard
-                  label="Weekly Rate"
-                  value={weeklyRate !== null ? `${weeklyRate >= 0 ? "+" : ""}${weeklyRate} lbs/wk` : "—"}
-                  subtitle={weightEntries.length < 2 ? "Log more entries" : "7-day avg"}
-                  valueColor={weeklyRate !== null && weeklyRate < 0 ? "text-green-600" : undefined}
-                  size="sm"
-                />
-                <StatsCard label="Days Logged" value={String(weightEntries.length)} subtitle="weight entries" size="sm" />
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                    <Skeleton className="h-3 w-20 mb-2" />
+                    <Skeleton className="h-7 w-24 mb-1" />
+                    <Skeleton className="h-3 w-28" />
+                  </div>
+                ))}
               </div>
-              {progressChartData.length > 0 ? (
-                <Card className="p-5">
-                  <h2 className="font-semibold text-gray-900 mb-4">Weight vs. Calorie Intake</h2>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <ComposedChart data={progressChartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                      <XAxis dataKey="date" tick={{ fontSize: 11 }} interval={3} />
-                      <YAxis yAxisId="weight" tick={{ fontSize: 12 }} label={{ value: "lbs", angle: -90, position: "insideLeft", offset: 10, style: { fontSize: 11 } }} />
-                      <YAxis yAxisId="cal" orientation="right" tick={{ fontSize: 12 }} label={{ value: "kcal", angle: 90, position: "insideRight", offset: 10, style: { fontSize: 11 } }} />
-                      <Tooltip />
-                      <Legend />
-                      <Bar yAxisId="cal" dataKey="calories" fill="#d1fae5" name="Daily Calories" />
-                      <Line yAxisId="weight" type="monotone" dataKey="weight" stroke="#22c55e" strokeWidth={2.5} dot={false} name="Weight (lbs)" connectNulls />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </Card>
-              ) : (
-                <Card className="p-12 text-center text-gray-400 text-sm">
-                  No data yet. Log your weight and meals to see progress.
-                </Card>
-              )}
+              <Card className="p-5">
+                <Skeleton className="h-5 w-48 mb-4" />
+                <Skeleton className="w-full h-[300px]" />
+              </Card>
+            </>
+          ) : (
+            <>
+              <FadeIn delay={0}>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <StatsCard
+                    label="Current Weight"
+                    value={currentWeight ? `${currentWeight.toFixed(1)} lbs` : "—"}
+                    subtitle={weightChange !== null ? `${weightChange >= 0 ? "+" : ""}${weightChange.toFixed(1)} lbs total` : "No data"}
+                    valueColor={weightChange !== null && weightChange < 0 ? "text-green-600" : undefined}
+                    size="sm"
+                  />
+                  <StatsCard
+                    label="Weekly Rate"
+                    value={weeklyRate !== null ? `${weeklyRate >= 0 ? "+" : ""}${weeklyRate} lbs/wk` : "—"}
+                    subtitle={weightEntries.length < 2 ? "Log more entries" : "7-day avg"}
+                    valueColor={weeklyRate !== null && weeklyRate < 0 ? "text-green-600" : undefined}
+                    size="sm"
+                  />
+                  <StatsCard label="Days Logged" value={String(weightEntries.length)} subtitle="weight entries" size="sm" />
+                </div>
+              </FadeIn>
+              <FadeIn delay={80}>
+                {progressChartData.length > 0 ? (
+                  <Card className="p-5">
+                    <h2 className="font-semibold text-gray-900 mb-4">Weight vs. Calorie Intake</h2>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <ComposedChart data={progressChartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                        <XAxis dataKey="date" tick={{ fontSize: 11 }} interval={3} />
+                        <YAxis yAxisId="weight" tick={{ fontSize: 12 }} label={{ value: "lbs", angle: -90, position: "insideLeft", offset: 10, style: { fontSize: 11 } }} />
+                        <YAxis yAxisId="cal" orientation="right" tick={{ fontSize: 12 }} label={{ value: "kcal", angle: 90, position: "insideRight", offset: 10, style: { fontSize: 11 } }} />
+                        <Tooltip />
+                        <Legend />
+                        <Bar yAxisId="cal" dataKey="calories" fill="#d1fae5" name="Daily Calories" />
+                        <Line yAxisId="weight" type="monotone" dataKey="weight" stroke="#22c55e" strokeWidth={2.5} dot={false} name="Weight (lbs)" connectNulls />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </Card>
+                ) : (
+                  <Card className="p-12 text-center text-gray-400 text-sm">
+                    No data yet. Log your weight and meals to see progress.
+                  </Card>
+                )}
+              </FadeIn>
             </>
           )}
         </div>

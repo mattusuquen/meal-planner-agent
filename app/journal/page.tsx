@@ -7,6 +7,8 @@ import StatsCard from "@/components/shared/StatsCard";
 import AddMealModal, { LogEntry } from "@/components/journal/AddMealModal";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import Skeleton from "@/components/ui/Skeleton";
+import FadeIn from "@/components/ui/FadeIn";
 import type { LoggedMeal, DailyTotals } from "@/lib/types";
 
 type EntryMethod = "plan" | "recipe" | "search" | "text" | "photo" | "quick";
@@ -216,14 +218,33 @@ export default function JournalPage() {
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center h-40 text-gray-400 text-sm">Loading...</div>
+          <div className="space-y-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden border-l-4 border-l-gray-200">
+                <div className="px-5 py-3.5 flex items-center justify-between border-b border-gray-50">
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="w-6 h-6 rounded" />
+                    <Skeleton className="h-4 w-20" />
+                  </div>
+                  <Skeleton className="h-4 w-14" />
+                </div>
+                <div className="px-5 py-4">
+                  <Skeleton className="h-4 w-36" />
+                </div>
+                <div className="px-5 py-3 border-t border-dashed border-gray-200">
+                  <Skeleton className="h-4 w-24" />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="space-y-4">
-            {SLOTS.map((slot) => {
+            {SLOTS.map((slot, i) => {
               const slotMeals = mealsBySlot[slot] ?? [];
               const slotCal = slotMeals.reduce((s, m) => s + getMealMacros(m).calories, 0);
               return (
-                <div key={slot} className={`bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden border-l-4 ${slotBorderColor[slot]}`}>
+                <FadeIn key={slot} delay={i * 70}>
+                <div className={`bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden border-l-4 ${slotBorderColor[slot]}`}>
                   <div className="px-5 py-3.5 flex items-center justify-between border-b border-gray-50">
                     <div className="flex items-center gap-2">
                       <span className="text-lg">{slotIcon[slot]}</span>
@@ -267,6 +288,7 @@ export default function JournalPage() {
                     Add to {slot}
                   </button>
                 </div>
+                </FadeIn>
               );
             })}
           </div>

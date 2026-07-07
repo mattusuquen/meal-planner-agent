@@ -5,6 +5,8 @@ import PageHeader from "@/components/shared/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import MacroDisplay from "@/components/ui/MacroDisplay";
+import Skeleton from "@/components/ui/Skeleton";
+import FadeIn from "@/components/ui/FadeIn";
 import type { Recipe } from "@/lib/types";
 
 export default function RecipesPage() {
@@ -91,7 +93,22 @@ export default function RecipesPage() {
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center h-40 text-gray-400 text-sm">Loading recipes...</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} className="overflow-hidden">
+              <Skeleton className="w-full h-44 rounded-none" />
+              <div className="p-4">
+                <Skeleton className="h-5 w-2/3 mb-2" />
+                <Skeleton className="h-4 w-1/2 mb-3" />
+                <div className="flex gap-4">
+                  <Skeleton className="h-3 w-14" />
+                  <Skeleton className="h-3 w-14" />
+                  <Skeleton className="h-3 w-14" />
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
       ) : recipes.length === 0 ? (
         <Card className="p-12 text-center">
           <div className="text-5xl mb-4">🍽️</div>
@@ -101,8 +118,9 @@ export default function RecipesPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {recipes.map((recipe) => (
-            <Card key={recipe.id} className="overflow-hidden">
+          {recipes.map((recipe, i) => (
+            <FadeIn key={recipe.id} delay={i * 60}>
+            <Card className="overflow-hidden">
               {recipe.image_url ? (
                 <img
                   src={recipe.image_url}
@@ -135,6 +153,7 @@ export default function RecipesPage() {
                 />
               </div>
             </Card>
+            </FadeIn>
           ))}
         </div>
       )}
