@@ -9,3 +9,51 @@
   --color-sidebar: #111827;
   --color-surface: #f9fafb;
 }
+
+/*
+ * Turbopack does not invoke @tailwindcss/postcss to process @theme blocks,
+ * so @theme alone produces no CSS variable declarations and no utility classes.
+ * Default Tailwind palette classes (bg-gray-900, etc.) work because Turbopack
+ * has built-in awareness of the default palette — but custom theme extensions
+ * are silently dropped.
+ *
+ * Fix: declare the same variables in :root so the browser sees them, then
+ * write explicit utility classes in @layer utilities so Tailwind emits them.
+ */
+:root {
+  --color-brand-50: #f0fdf4;
+  --color-brand-100: #dcfce7;
+  --color-brand-500: #22c55e;
+  --color-brand-600: #16a34a;
+  --color-brand-700: #15803d;
+  --color-sidebar: #111827;
+  --color-surface: #f9fafb;
+}
+
+@layer utilities {
+  .bg-brand-50 { background-color: var(--color-brand-50); }
+  .bg-brand-100 { background-color: var(--color-brand-100); }
+  .bg-brand-500 { background-color: var(--color-brand-500); }
+  .bg-brand-600 { background-color: var(--color-brand-600); }
+  .bg-sidebar { background-color: var(--color-sidebar); }
+  .bg-surface { background-color: var(--color-surface); }
+
+  .text-brand-600 { color: var(--color-brand-600); }
+  .text-brand-700 { color: var(--color-brand-700); }
+
+  .border-brand-300 { border-color: color-mix(in srgb, var(--color-brand-500) 60%, white); }
+  .border-brand-400 { border-color: color-mix(in srgb, var(--color-brand-500) 80%, white); }
+  .border-brand-500 { border-color: var(--color-brand-500); }
+  .border-brand-600 { border-color: var(--color-brand-600); }
+
+  .ring-brand-100 { --tw-ring-color: var(--color-brand-100); }
+
+  .hover\:bg-brand-50:hover { background-color: var(--color-brand-50); }
+  .hover\:bg-brand-100:hover { background-color: var(--color-brand-100); }
+  .hover\:bg-brand-700:hover { background-color: var(--color-brand-700); }
+  .hover\:text-brand-600:hover { color: var(--color-brand-600); }
+  .hover\:text-brand-700:hover { color: var(--color-brand-700); }
+
+  .focus\:ring-brand-500:focus { --tw-ring-color: var(--color-brand-500); }
+  .focus\:ring-brand-600:focus { --tw-ring-color: var(--color-brand-600); }
+}
