@@ -84,9 +84,11 @@ export default function AddMealModal({ slot, onClose, onAdd, currentDate }: AddM
   const [planServings, setPlanServings] = useState<Record<string, number>>({});
   const [plannedMeals, setPlannedMeals] = useState<PlannedMeal[]>([]);
   const [planLoading, setPlanLoading] = useState(false);
+  const [planFetched, setPlanFetched] = useState(false);
 
   const [savedRecipes, setSavedRecipes] = useState<SavedRecipe[]>([]);
   const [recipesLoading, setRecipesLoading] = useState(false);
+  const [recipesFetched, setRecipesFetched] = useState(false);
   const [recipeSearch, setRecipeSearch] = useState("");
   const [selectedRecipe, setSelectedRecipe] = useState<SavedRecipe | null>(null);
   const [recipeServings, setRecipeServings] = useState(1);
@@ -118,41 +120,50 @@ export default function AddMealModal({ slot, onClose, onAdd, currentDate }: AddM
 
   // Load plan meals and recipes when tabs change
   useEffect(() => {
-    if (tab === "plan" && plannedMeals.length === 0 && !planLoading) {
+    if (tab === "plan" && !planFetched && !planLoading) {
       setPlanLoading(true);
       const today = currentDate ?? new Date().toISOString().split("T")[0];
-      const monday = new Date(today);
+      // Parse as local noon (not UTC midnight) so getDay() returns the correct local weekday
+      const monday = new Date(today + "T12:00:00");
       const day = monday.getDay();
       monday.setDate(monday.getDate() - day + (day === 0 ? -6 : 1));
-      const weekStart = monday.toISOString().split("T")[0];
+      const weekStart = monday.toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
       fetch(`/api/plan?week_start=${weekStart}`)
         .then((r) => r.json())
         .then(({ plan }) => {
-          if (!plan?.plan) { setPlanLoading(false); return; }
-          const meals: PlannedMeal[] = [];
-          for (const [s, dayPlan] of Object.entries(plan.plan as Record<string, Record<string, { name: string; calories: number; protein: number; carbs: number; fat: number } | null>>)) {
-            if (s === today) {
-              for (const [mealSlot, meal] of Object.entries(dayPlan)) {
-                if (meal) meals.push({ id: `${s}-${mealSlot}`, slot: mealSlot, name: meal.name, calories: meal.calories, protein: meal.protein, carbs: meal.carbs, fat: meal.fat });
+          if (plan?.plan) {
+            const meals: PlannedMeal[] = [];
+            // Use local date for comparison (plan keys are local-date ISO strings)
+            const localToday = new Date(today + "T12:00:00").toLocaleDateString("en-CA");
+            for (const [s, dayPlan] of Object.entries(plan.plan as Record<string, Record<string, { name: string; calories: number; protein: number; carbs: number; fat: number } | null>>)) {
+              if (s === localToday) {
+                for (const [mealSlot, meal] of Object.entries(dayPlan)) {
+                  if (meal) meals.push({ id: `${s}-${mealSlot}`, slot: mealSlot, name: meal.name, calories: meal.calories, protein: meal.protein, carbs: meal.carbs, fat: meal.fat });
+                }
               }
             }
+            setPlannedMeals(meals);
           }
-          setPlannedMeals(meals);
           setPlanLoading(false);
+          setPlanFetched(true);
         })
-        .catch(() => setPlanLoading(false));
+        .catch(() => { setPlanLoading(false); setPlanFetched(true); });
     }
-  }, [tab, plannedMeals.length, planLoading, currentDate]);
+  }, [tab, planFetched, planLoading, currentDate]);
 
   useEffect(() => {
-    if (tab === "recipe" && savedRecipes.length === 0 && !recipesLoading) {
+    if (tab === "recipe" && !recipesFetched && !recipesLoading) {
       setRecipesLoading(true);
       fetch("/api/recipes")
         .then((r) => r.json())
-        .then(({ recipes }) => { setSavedRecipes(recipes ?? []); setRecipesLoading(false); })
-        .catch(() => setRecipesLoading(false));
+        .then(({ recipes }) => {
+          setSavedRecipes(recipes ?? []);
+          setRecipesLoading(false);
+          setRecipesFetched(true);
+        })
+        .catch(() => { setRecipesLoading(false); setRecipesFetched(true); });
     }
-  }, [tab, savedRecipes.length, recipesLoading]);
+  }, [tab, recipesFetched, recipesLoading]);
 
   const handleFileSelect = (file: File) => {
     photoFileRef.current = file;

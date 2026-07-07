@@ -31,7 +31,7 @@ function addDays(date: Date, days: number): Date {
 }
 
 function toISO(date: Date): string {
-  return date.toISOString().split("T")[0];
+  return date.toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
 }
 
 function getWeekDays(monday: Date): string[] {

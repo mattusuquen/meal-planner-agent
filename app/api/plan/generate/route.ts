@@ -22,11 +22,12 @@ const PlanSchema = z.record(
 );
 
 function getWeekDays(weekStart: string): string[] {
-  const start = new Date(weekStart);
+  // Parse as local noon to avoid UTC midnight offset issues across timezones
+  const start = new Date(weekStart + "T12:00:00");
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(start);
     d.setDate(d.getDate() + i);
-    return d.toISOString().split("T")[0];
+    return d.toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
   });
 }
 
