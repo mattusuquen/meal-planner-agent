@@ -54,7 +54,7 @@ Return ONLY JSON:
   // Match each item to USDA
   const enrichedItems = await Promise.all(
     items.map(async (item, idx) => {
-      const match = await matchIngredient(item.name);
+      const match = await matchIngredient(item.name, supabase);
       const macros = match
         ? calcNutrientsFromUSDA(match.per_100g, item.estimated_grams)
         : { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };

@@ -92,7 +92,7 @@ Return ONLY a JSON object matching this exact schema:
   }[] = [];
 
   for (const ing of parsed.ingredients) {
-    const match = await matchIngredient(ing.raw_text);
+    const match = await matchIngredient(ing.raw_text, supabase);
     const macros = match
       ? calcNutrientsFromUSDA(match.per_100g, ing.estimated_grams)
       : { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };

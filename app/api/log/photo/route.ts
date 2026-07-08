@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { adminSupabase } from "@/lib/supabase/admin";
 import { openai } from "@/lib/openai";
 import { matchIngredient } from "@/lib/usda";
 import { calcNutrientsFromUSDA } from "@/lib/nutrition";
@@ -24,7 +23,7 @@ export async function POST(request: Request) {
   const buffer = Buffer.from(await file.arrayBuffer());
   const fileName = `${user.id}/${Date.now()}.${file.name.split(".").pop() ?? "jpg"}`;
 
-  const { error: uploadError } = await adminSupabase.storage
+  const { error: uploadError } = await supabase.storage
     .from("meal-photos")
     .upload(fileName, buffer, {
       contentType: file.type,
@@ -35,7 +34,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Upload failed" }, { status: 500 });
   }
 
-  const { data: urlData } = await adminSupabase.storage
+  const { data: urlData } = await supabase.storage
     .from("meal-photos")
     .createSignedUrl(fileName, 60 * 60); // 1 hour signed URL for vision
 
@@ -90,7 +89,7 @@ Use plate/utensil size as reference for portions.`,
   // Match each item to USDA and calculate macros
   const enrichedItems = await Promise.all(
     items.map(async (item, idx) => {
-      const match = await matchIngredient(item.name);
+      const match = await matchIngredient(item.name, supabase);
       const macros = match
         ? calcNutrientsFromUSDA(match.per_100g, item.estimated_grams)
         : { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
@@ -112,7 +111,7 @@ Use plate/utensil size as reference for portions.`,
   );
 
   // Get the permanent URL to return
-  const { data: permanentUrl } = adminSupabase.storage
+  const { data: permanentUrl } = supabase.storage
     .from("meal-photos")
     .getPublicUrl(fileName);
 
