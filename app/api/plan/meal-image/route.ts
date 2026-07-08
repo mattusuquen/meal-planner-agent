@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { adminSupabase } from "@/lib/supabase/admin";
 import { openai } from "@/lib/openai";
 import { NextResponse } from "next/server";
 
@@ -22,7 +21,7 @@ export async function POST(request: Request) {
   }
 
   // Fetch the plan to get meal name
-  const { data: planRow } = await adminSupabase
+  const { data: planRow } = await supabase
     .from("meal_plans")
     .select("plan")
     .eq("id", plan_id)
@@ -61,7 +60,7 @@ export async function POST(request: Request) {
     const fileName = `plan-${plan_id}-${day}-${slot.toLowerCase()}.png`;
 
     // Try to upload to Supabase Storage
-    const { error: uploadError } = await adminSupabase.storage
+    const { error: uploadError } = await supabase.storage
       .from("recipe-images")
       .upload(fileName, buffer, { contentType: "image/png", upsert: true });
 
@@ -73,7 +72,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const { data: urlData } = adminSupabase.storage
+    const { data: urlData } = supabase.storage
       .from("recipe-images")
       .getPublicUrl(fileName);
     const imageUrl = urlData.publicUrl;
@@ -82,7 +81,7 @@ export async function POST(request: Request) {
     const updatedPlan = structuredClone(planRow.plan);
     if (updatedPlan[day]?.[slot]) {
       updatedPlan[day][slot] = { ...updatedPlan[day][slot], image_url: imageUrl };
-      const { error: updateError } = await adminSupabase
+      const { error: updateError } = await supabase
         .from("meal_plans")
         .update({ plan: updatedPlan })
         .eq("id", plan_id);

@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { adminSupabase } from "@/lib/supabase/admin";
 import { openai } from "@/lib/openai";
 import { NextResponse } from "next/server";
 
@@ -8,9 +7,14 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
-  // Fetch the recipe (use admin to avoid auth issues in fire-and-forget context)
-  const { data: recipe } = await adminSupabase
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { data: recipe } = await supabase
     .from("recipes")
     .select("name, cuisine")
     .eq("id", id)
@@ -42,7 +46,7 @@ export async function POST(
       const buffer = Buffer.from(imageData.b64_json, "base64");
       const fileName = `${id}.png`;
 
-      const { error: uploadError } = await adminSupabase.storage
+      const { error: uploadError } = await supabase.storage
         .from("recipe-images")
         .upload(fileName, buffer, {
           contentType: "image/png",
@@ -50,7 +54,7 @@ export async function POST(
         });
 
       if (!uploadError) {
-        const { data: urlData } = adminSupabase.storage
+        const { data: urlData } = supabase.storage
           .from("recipe-images")
           .getPublicUrl(fileName);
         imageUrl = urlData.publicUrl;
@@ -61,7 +65,7 @@ export async function POST(
       const buffer = Buffer.from(await imgRes.arrayBuffer());
       const fileName = `${id}.png`;
 
-      const { error: uploadError } = await adminSupabase.storage
+      const { error: uploadError } = await supabase.storage
         .from("recipe-images")
         .upload(fileName, buffer, {
           contentType: "image/png",
@@ -69,7 +73,7 @@ export async function POST(
         });
 
       if (!uploadError) {
-        const { data: urlData } = adminSupabase.storage
+        const { data: urlData } = supabase.storage
           .from("recipe-images")
           .getPublicUrl(fileName);
         imageUrl = urlData.publicUrl;
@@ -77,7 +81,7 @@ export async function POST(
     }
 
     if (imageUrl) {
-      await adminSupabase
+      await supabase
         .from("recipes")
         .update({ image_url: imageUrl })
         .eq("id", id);

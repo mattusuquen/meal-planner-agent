@@ -1,4 +1,4 @@
-import { adminSupabase } from "./supabase/admin";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { NutritionPer100g, NutritionCache, USDASearchResult } from "./types";
 
 const USDA_BASE = "https://api.nal.usda.gov/fdc/v1";
@@ -58,7 +58,10 @@ export async function searchUSDA(
   });
 }
 
-export async function matchIngredient(rawText: string): Promise<{
+export async function matchIngredient(
+  rawText: string,
+  supabase: SupabaseClient
+): Promise<{
   fdcId: number;
   description: string;
   per_100g: NutritionPer100g;
@@ -69,7 +72,7 @@ export async function matchIngredient(rawText: string): Promise<{
   const best = results[0];
 
   // Cache the result
-  await cacheUSDAResult(best.fdcId, best.description, best.per_100g);
+  await cacheUSDAResult(best.fdcId, best.description, best.per_100g, supabase);
 
   return {
     fdcId: best.fdcId,
@@ -81,9 +84,10 @@ export async function matchIngredient(rawText: string): Promise<{
 export async function cacheUSDAResult(
   fdcId: number,
   description: string,
-  per100g: NutritionPer100g
+  per100g: NutritionPer100g,
+  supabase: SupabaseClient
 ): Promise<void> {
-  await adminSupabase.from("nutrition_cache").upsert(
+  await supabase.from("nutrition_cache").upsert(
     {
       usda_fdc_id: fdcId,
       description,
@@ -95,10 +99,11 @@ export async function cacheUSDAResult(
 }
 
 export async function getOrFetchAndCache(
-  fdcId: number
+  fdcId: number,
+  supabase: SupabaseClient
 ): Promise<NutritionCache | null> {
   // Check cache first
-  const { data } = await adminSupabase
+  const { data } = await supabase
     .from("nutrition_cache")
     .select("*")
     .eq("usda_fdc_id", fdcId)
@@ -115,7 +120,7 @@ export async function getOrFetchAndCache(
   const food: USDAFood = await res.json();
   const per_100g = extractPer100g(food);
 
-  await cacheUSDAResult(fdcId, food.description, per_100g);
+  await cacheUSDAResult(fdcId, food.description, per_100g, supabase);
 
   return {
     usda_fdc_id: fdcId,
