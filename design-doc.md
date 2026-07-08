@@ -20,8 +20,6 @@ An AI-powered meal planning and nutrition tracking application. Users generate p
 ### Non-Goals (v1)
 - Barcode scanning
 - Wearable/fitness integrations
-- Social features
-- Native mobile apps (responsive web first)
 - Agent weekly review / adaptive calorie target revision (planned v2)
 
 ---
