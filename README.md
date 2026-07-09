@@ -4,6 +4,19 @@
 </p>
 ---
 
+## Technical Architecture
+
+The `meal-planner-agent` is built on a robust, modern, and scalable stack designed for performance and developer experience.
+
+### Tech Stack
+
+| Technology   | Purpose                                     | Key Benefit                                     |
+| :----------- | :------------------------------------------ | :---------------------------------------------- |
+| **TypeScript** | Primary Language, Type Safety               | Enhanced code quality, fewer runtime errors     |
+| **Node.js**    | Backend Runtime Environment                 | Scalable server-side logic, rich ecosystem      |
+| **Next.js**    | React Framework for Full-stack Development  | Server-side rendering, optimized performance    |
+| **Supabase**   | Backend-as-a-Service (Database, Auth, APIs) | Rapid development, managed infrastructure       |
+| **Tailwind CSS** | Utility-First CSS Framework                 | Fast UI development, consistent styling         |
 ## The Strategic "Why"
 
 > Meal planning is a cornerstone of healthy living, but it's often a source of frustration. Users grapple with decision fatigue, dietary restrictions, budget constraints, and the constant struggle to introduce variety. The current landscape of manual planning, generic templates, or cumbersome apps fails to offer a truly personalized, intelligent, and seamless experience, leading to wasted time, food, and unfulfilled health goals.
@@ -21,21 +34,6 @@ The `meal-planner-agent` redefines the meal planning experience by leveraging ad
 *   🍎 **Nutritional Insight**: Provides at-a-glance nutritional breakdowns for meals, helping you maintain a balanced diet effortlessly.
 *   📚 **Recipe Discovery & Management**: Explore a vast library of recipes, save your favorites, and integrate new culinary experiences into your routine.
 
----
-
-## Technical Architecture
-
-The `meal-planner-agent` is built on a robust, modern, and scalable stack designed for performance and developer experience.
-
-### Tech Stack
-
-| Technology   | Purpose                                     | Key Benefit                                     |
-| :----------- | :------------------------------------------ | :---------------------------------------------- |
-| **TypeScript** | Primary Language, Type Safety               | Enhanced code quality, fewer runtime errors     |
-| **Node.js**    | Backend Runtime Environment                 | Scalable server-side logic, rich ecosystem      |
-| **Next.js**    | React Framework for Full-stack Development  | Server-side rendering, optimized performance    |
-| **Supabase**   | Backend-as-a-Service (Database, Auth, APIs) | Rapid development, managed infrastructure       |
-| **Tailwind CSS** | Utility-First CSS Framework                 | Fast UI development, consistent styling         |
 
 ### Directory Structure
 
