@@ -2,14 +2,6 @@
   <h1>meal-planner-agent</h1>
   <em>Your AI-powered sous chef for effortless, personalized meal planning and calorie tracking.</em>
 </p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/build-passing-brightgreen" alt="Build Status">
-  <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
-  <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome">
-  <img src="https://img.shields.io/github/stars/YOUR_USERNAME/meal-planner-agent.svg?style=social&label=Star" alt="GitHub stars">
-</p>
-
 ---
 
 ## The Strategic "Why"
