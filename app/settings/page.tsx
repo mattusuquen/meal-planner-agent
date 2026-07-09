@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import PageHeader from "@/components/shared/PageHeader";
 import TabSwitcher from "@/components/shared/TabSwitcher";
 import Card from "@/components/ui/Card";
@@ -28,6 +29,7 @@ function calcMacros(calories: number, proteinPct: number, carbsPct: number, fatP
 }
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [tab, setTab] = useState<SettingsTab>("profile");
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -108,6 +110,13 @@ export default function SettingsPage() {
 
   const macros = calcMacros(calories, proteinPct, carbsPct, fatPct);
   const totalPct = proteinPct + carbsPct + fatPct;
+
+  const handleSignOut = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/auth/login");
+    router.refresh();
+  };
 
   const handleSave = async () => {
     if (!userId) return;
@@ -475,6 +484,19 @@ export default function SettingsPage() {
           <Button onClick={handleSave} disabled={saving} fullWidth size="lg">{saving ? "Saving..." : "Save Preferences"}</Button>
         </Card>
       )}
+
+      {/* Sign out — always visible */}
+      <div className="mt-6 pt-6 border-t border-gray-200">
+        <button
+          onClick={handleSignOut}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+          Sign Out
+        </button>
+      </div>
     </div>
   );
 }

@@ -160,7 +160,7 @@ Return ONLY a JSON object matching this exact schema:
   fetch(`${baseUrl}/api/recipes/${recipe.id}/image`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-  }).catch(() => {});
+  }).catch(() => { });
 
   return NextResponse.json({ recipe });
 }
