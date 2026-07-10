@@ -1,8 +1,8 @@
 # Design Document: AI Food Tracking & Planning Agent
 
-**Version:** 1.4
+**Version:** 2.0
 **Author:** Matt
-**Status:** Implemented (v1)
+**Status:** Implemented (v2)
 
 ---
 
@@ -38,6 +38,7 @@ An AI-powered meal planning and nutrition tracking application. Users generate p
 | AI — text | OpenAI GPT-4o-mini | Recipe generation, meal planning, ingredient parsing, text/photo log parsing |
 | AI — images | OpenAI gpt-image-1 | Recipe imagery + meal plan food photos; `quality: "low"` for speed |
 | AI — vision | OpenAI GPT-4o-mini | Photo meal analysis (image_url mode) |
+| AI orchestration | LangChain + LangGraph | `@langchain/core`, `@langchain/openai`, `@langchain/langgraph`; `createReactAgent` for chat, `StateGraph` for plan/recipe pipelines |
 | Nutrition data | USDA FoodData Central API | Nutrient IDs: calories=1008, protein=1003, carbs=1005, fat=1004 |
 | Storage | Supabase Storage | `recipe-images` (public), `meal-photos` (private) |
 | Charts | Recharts | Dashboard visualizations |
@@ -188,6 +189,20 @@ weight_entries (
   entry_date date, weight_kg numeric,
   unique (user_id, entry_date)
 )
+
+chat_sessions (
+  id uuid pk, user_id uuid references profiles on delete cascade,
+  created_at timestamptz, last_message_at timestamptz
+)
+
+chat_messages (
+  id uuid pk, session_id uuid references chat_sessions on delete cascade,
+  role text,               -- 'human' | 'ai' | 'tool'
+  content text,
+  tool_name text null,     -- populated when role = 'tool'
+  tool_result jsonb null,
+  created_at timestamptz
+)
 ```
 
 RLS enabled on all user-owned tables (`user_id = auth.uid()` or `created_by = auth.uid()`). `nutrition_cache` is publicly readable; written only via service-role client.
@@ -211,10 +226,12 @@ Daily totals are recomputed server-side (not via DB triggers) on every log write
 
 ```
 User request → Next.js API route handler
-  ├── Plan generation:   GPT-4o-mini, json_object mode, Zod validation, retry once on parse failure
-  ├── Meal swap:         GPT-4o-mini, remaining daily budget passed as context
-  ├── Recipe generation: GPT-4o-mini, Zod schema → USDA match loop → macro reduce → save
-  ├── Text parse:        GPT-4o-mini → structured items → USDA match
+  ├── Plan generation:   LangGraph StateGraph — generatePlan → validatePlan (retry ≤1) → savePlan
+  ├── Meal swap:         GPT-4o-mini direct call, remaining daily budget passed as context (swap-meal route)
+  ├── Recipe generation: LangGraph StateGraph — generateRecipe → lookupNutrition → calculateMacros → saveRecipe → generateImage
+  ├── Chat agent:        LangGraph createReactAgent — tool-calling loop, SSE-streamed tokens
+  │     tools: get_daily_totals, get_meal_plan, swap_meal, parse_and_log_meal, confirm_log_meal
+  ├── Text parse:        GPT-4o-mini → structured items → USDA match (chat parse_and_log_meal tool)
   ├── Photo analysis:    GPT-4o-mini vision (signed URL) → structured items → USDA match
   ├── Ingredient matcher: USDA /foods/search → top result → cache in nutrition_cache
   ├── Nutrition calc:    Pure TS functions in lib/nutrition.ts (no LLM involvement)
@@ -222,8 +239,10 @@ User request → Next.js API route handler
   └── Meal plan images:  gpt-image-1 (quality: low), on-demand per slot when day is viewed
 ```
 
-- `response_format: { type: "json_object" }` on all generation calls; Zod validates before saving
-- Plan generation retries once on Zod parse failure before returning 500
+- Plan and recipe generation modeled as LangGraph `StateGraph` pipelines; `lib/langchain/graphs/planGraph.ts` and `recipeGraph.ts` replace the hand-rolled while-loop/try-catch orchestration that was previously inline in the route handlers
+- Plan generation retries once on Zod validation failure via a conditional edge (`validatePlan → generatePlan` when `attempts < 2`)
+- Chat agent uses `createReactAgent` from `@langchain/langgraph/prebuilt`; bound to the 5 chat tools; response streamed via `streamEvents({ version: "v2" })`; token events filtered by `event.metadata?.langgraph_node === "agent"` to avoid streaming internal tool-call steps
+- `response_format: { type: "json_object" }` on all structured generation calls; Zod validates before saving
 - Recipe image generation is non-blocking; recipe page polls `GET /api/recipes/[id]/image` every 5s
 - Meal plan image generation fires per-slot when a day is selected; `maxDuration = 60` on the route; image URL cached in plan JSONB after first generation; data URI fallback if Storage upload fails
 - `gpt-image-1` quality parameter is `"low"` (valid values: `"low"`, `"medium"`, `"high"`, `"auto"` — not `"standard"`)
@@ -255,6 +274,9 @@ User request → Next.js API route handler
 | GET | `/api/weight?limit=` | Weight entries |
 | POST | `/api/weight` | Log weight entry (lbs → kg stored) |
 | DELETE | `/api/weight?id=` | Delete weight entry |
+| POST | `/api/chat` | Send message; stream agent response via SSE; execute bound tools |
+| GET | `/api/chat/sessions` | List user's 20 most recent chat sessions |
+| GET | `/api/chat/sessions/[id]` | Fetch up to 100 messages for a session (with ownership check) |
 
 Browser client (`lib/supabase/client.ts`) used for auth state only. All data reads and writes go through route handlers to enforce RLS and server-side computation.
 
@@ -267,21 +289,37 @@ lib/
   types.ts          — All shared TypeScript interfaces
   nutrition.ts      — TDEE, macro calc, recalcDailyTotals
   usda.ts           — USDA search, ingredient matcher, cache writer
-  openai.ts         — Shared OpenAI client
+  openai.ts         — Shared OpenAI client (still used by image routes)
   supabase/
     client.ts       — Browser client (@supabase/ssr)
     server.ts       — Server client (cookies-based)
     admin.ts        — Service-role client (nutrition_cache writes, Storage uploads)
+  langchain/
+    client.ts       — Shared ChatOpenAI singleton (gpt-4o-mini)
+    tools/
+      usda.ts       — LangChain tool() wrappers: searchUSDAFoodsTool, makeUSDATools(supabase)
+      chat.ts       — Chat tool factory: makeChatTools(supabase, userId) → 5 tools
+    graphs/
+      planGraph.ts  — StateGraph: generatePlan → validatePlan (retry) → savePlan
+      recipeGraph.ts — StateGraph: generateRecipe → lookupNutrition → calculateMacros → saveRecipe → generateImage
+      chatGraph.ts  — createReactAgent with chat tools + system prompt
+    memory/
+      supabaseHistory.ts — SupabaseChatHistory extends BaseListChatMessageHistory
 
 app/
   proxy.ts          — Auth middleware (Next.js 16); onboarding gate
   api/
     plan/
       route.ts           — GET active plan for week
-      generate/route.ts  — POST generate 7-day plan
+      generate/route.ts  — POST generate 7-day plan (via planGraph)
       swap-meal/route.ts — POST swap single meal slot
       meal-image/route.ts — POST generate/cache gpt-image-1 photo for meal slot
     profile/route.ts     — GET user profile
+    chat/
+      route.ts           — POST send message; SSE-stream agent response
+      sessions/
+        route.ts         — GET list user's 20 most recent sessions
+        [id]/route.ts    — GET messages for a session
     recipes/...
     grocery/...
     log/...
@@ -299,13 +337,20 @@ app/
   weight/           — Weight log + chart
 
 components/
+  chat/
+    ChatPanel.tsx   — Floating chat panel (bottom sheet mobile / sidebar desktop); SSE streaming; MealConfirmCard
   journal/AddMealModal.tsx  — 6-tab add-meal modal (plan/recipe/search/text/photo/quick)
-  layout/                   — AppShell, Sidebar (with sign-out), mobile bottom tab bar
+  layout/
+    AppShell.tsx    — Shell with chatOpen state, floating desktop chat button, ChatPanel
+    Sidebar.tsx     — Desktop sidebar with "Ask AI" button
+    MobileNav.tsx   — Bottom tab bar with "Ask AI" tab (6 items)
   shared/                   — MacroRingCard, StatsCard, FoodEntryRow, PageHeader, TabSwitcher
   ui/                       — Card, Button, ProgressBar primitives
 
 supabase/
-  migrations/001_initial_schema.sql
+  migrations/
+    001_initial_schema.sql
+    002_chat_tables.sql  — chat_sessions + chat_messages with RLS
 ```
 
 ---
@@ -327,6 +372,13 @@ supabase/
 | Profile upsert on every POST | Handles users created before migration trigger; idempotent with `ignoreDuplicates: true` |
 | `ignoreDuplicates: true` on profile upsert | Prevents overwriting existing profile fields when only `id` is provided |
 | In-session image persistence via `plan` state | When a storage-backed URL comes back, it is written into the React `plan` state so switching days and returning does not re-trigger generation within the same session; data URIs are intentionally excluded from this write-back (too large) |
+| `serverExternalPackages` for LangChain | `@langchain/core`, `@langchain/langgraph`, `@langchain/openai` must be listed in `next.config.ts` `serverExternalPackages`; without this, Next.js attempts to bundle their ESM modules and fails at build/runtime |
+| LangGraph `Annotation` requires both `value` and `default` | Every field in `Annotation.Root` that is not required input must declare both `value: (_, update) => update` (the reducer) and `default: () => ...` (the initial value); omitting `value` produces a TypeScript error even when `default` is present |
+| `mapStoredMessagesToChatMessages` requires explicit `role`, `name`, `tool_call_id` | The LangChain `StoredMessage` type requires `data.role`, `data.name`, and `data.tool_call_id` fields (even if `undefined`); omitting any of them causes a TypeScript error when calling `mapStoredMessagesToChatMessages` |
+| SSE token filter by `langgraph_node === "agent"` | `streamEvents` emits `on_chat_model_stream` events for both the agent's LLM calls and tool-call intermediate steps; filtering by `event.metadata?.langgraph_node === "agent"` ensures only the final reply tokens are forwarded to the client |
+| `meal_draft` SSE event links tool output to the chat message | When `parse_and_log_meal` completes, the route emits a `meal_draft` SSE event; `ChatPanel` attaches it to the assistant message currently being streamed so the inline `MealConfirmCard` appears beneath that message |
+| Chat `confirm_log_meal` is triggered by sending a natural-language message | After the user clicks "Log" in the `MealConfirmCard`, the panel sends a new user message (`"Yes, log all of that to my ${slot}."`); the agent receives this as a normal turn and calls `confirm_log_meal` — avoids a separate client-side confirm API call and keeps the conversation history coherent |
+| Zod v4 compatible with `@langchain/core` ≥0.3 | `@langchain/core` ≥0.3.x resolves Zod schemas via `@standard-schema/spec`; no aliasing or dual-install of Zod v3 is needed when the project already uses Zod v4 |
 
 ---
 
@@ -334,10 +386,12 @@ supabase/
 
 1. Supabase project with URL + anon key + service-role key in `.env.local`
 2. Run `supabase/migrations/001_initial_schema.sql` in Supabase SQL Editor
-3. Create Storage buckets: `recipe-images` (public), `meal-photos` (private)
-4. OpenAI API key with access to `gpt-4o-mini` and `gpt-image-1`
-5. USDA FoodData Central API key (free at api.nal.usda.gov)
-6. If users signed up before running the migration, run: `INSERT INTO public.profiles (id) SELECT id FROM auth.users ON CONFLICT (id) DO NOTHING;`
+3. Run `supabase/migrations/002_chat_tables.sql` in Supabase SQL Editor (adds `chat_sessions` + `chat_messages`)
+4. Create Storage buckets: `recipe-images` (public), `meal-photos` (private)
+5. OpenAI API key with access to `gpt-4o-mini` and `gpt-image-1`
+6. USDA FoodData Central API key (free at api.nal.usda.gov)
+7. `next.config.ts` must include `serverExternalPackages: ["@langchain/core", "@langchain/langgraph", "@langchain/openai"]` to prevent ESM bundling conflicts
+8. If users signed up before running the migration, run: `INSERT INTO public.profiles (id) SELECT id FROM auth.users ON CONFLICT (id) DO NOTHING;`
 
 ---
 
@@ -353,93 +407,74 @@ supabase/
 | Meal plan image Storage upload failure | Data URI fallback ensures image shows in current session; upload retried implicitly on next page visit |
 | Photo portion estimates inaccurate | Confirmation draft with per-item confidence badges; macros always from USDA, never from vision model |
 | Timezone date key mismatch | All date strings use `toLocaleDateString("en-CA")` consistently across client and server |
-| Missing profile row (FK violation) | All write routes upsert profile defensively before insert |
+| Missing profile row (FK violation) | All write routes upsert profile defensively before insert; chat route also upserts before `chat_sessions` insert |
 | Vercel function timeout on image generation | `maxDuration = 60` set on meal-image route; gpt-image-1 `quality: "low"` keeps generation fast |
+| Chat agent states wrong nutrition number | System prompt forbids it; `get_daily_totals` and `parse_and_log_meal` are the only sources of numbers in chat replies |
+| LLM logs meal without user confirmation | `parse_and_log_meal` returns a draft only; `confirm_log_meal` is called only after the user clicks "Log" in the confirmation card or sends an explicit confirmation message |
+| Chat session FK violation on fresh users | Chat route upserts profile row before `chat_sessions` insert, same pattern as all other write routes |
 
 ---
 
-## 12. Planned Enhancement: LangChain / LangGraph Migration (v2)
+## 12. LangChain / LangGraph Migration (Implemented in v2)
 
-The current AI agent architecture (Section 6) is a hand-rolled orchestration layer: raw OpenAI SDK calls, manual tool-calling loops, and no formal memory abstraction. The following four changes are scoped as a v2 migration to bring the agent layer onto standard tooling, in order of expected effort:
+The hand-rolled AI orchestration layer (raw OpenAI SDK calls, manual retry loops) has been replaced with LangChain/LangGraph. The four originally planned changes and their implementation status:
 
-| # | Change | What it replaces | How |
+| # | Change | Status | Implementation |
 |---|---|---|---|
-| 1 | **`ChatOpenAI` + bound tools** | Manual `openai.chat.completions.create()` calls with hand-written JSON schemas for tools (e.g. USDA lookup) | Wrap existing functions (`usda.ts` search, ingredient matcher) as LangChain `tool()` definitions with Zod schemas; bind to a `ChatOpenAI` instance so schema validation and tool-call parsing are handled by the framework instead of manually |
-| 2 | **LangGraph pipeline for meal planning** | The linear, manually-sequenced flow in `lib/openai.ts` (generate → USDA match → macro reduce → save → image) | Model the recipe/plan generation flow in Section 6 as a `StateGraph` with one node per step (`generateRecipe`, `lookupNutrition`, `generateImage`, etc.); makes retry-on-Zod-failure and conditional branches (e.g. skip image gen if cached) explicit graph edges instead of nested try/catch |
-| 3 | **`RunnableWithMessageHistory` backed by Supabase** | Any future need for conversational context across chat turns (e.g. an agent that remembers prior meal swaps or preferences within a session) | Implement a `BaseListChatMessageHistory` subclass reading/writing to a Supabase table, keyed by `user_id`; separates short-term session memory from the long-term preference data already in `profiles` |
-| 4 | **`SupabaseVectorStore` for semantic recall** | Not yet built — a v2/v3 stretch goal, not a replacement for existing functionality | Add `pgvector` to the existing Postgres instance; embed past recipes/logged meals so the agent can answer things like "something like what I had last week" via semantic search rather than exact matches |
+| 1 | **`ChatOpenAI` + bound tools** | ✅ Done | USDA functions wrapped as LangChain `tool()` definitions with Zod schemas in `lib/langchain/tools/usda.ts`; chat tools in `lib/langchain/tools/chat.ts` |
+| 2 | **LangGraph pipelines** | ✅ Done | `planGraph.ts` (StateGraph with retry edge) replaces the hand-rolled while-loop in the plan generate route; `recipeGraph.ts` (StateGraph) replaces the inline sequence in the recipe generate route |
+| 3 | **`BaseListChatMessageHistory` backed by Supabase** | ✅ Done | `SupabaseChatHistory` in `lib/langchain/memory/supabaseHistory.ts`; rolling 20-message window; keyed by `(userId, sessionId)` |
+| 4 | **`SupabaseVectorStore` for semantic recall** | Deferred (v3) | Add `pgvector` to Postgres; embed past recipes/logged meals for "something like last week" queries |
 
-**Non-goals for this migration:** none of the four changes alter the core nutrition-accuracy guarantee (Section 1) — USDA FoodData Central remains the sole source of truth for macros; LangChain/LangGraph only touch orchestration and memory, never nutrition calculation (`lib/nutrition.ts` stays pure TS, no LLM involvement, per Section 6).
+**Unchanged by this migration:** core nutrition-accuracy guarantee (Section 1) — USDA FoodData Central remains the sole source of macros; `lib/nutrition.ts` stays pure TS; `lib/usda.ts` stays pure TS. LangGraph nodes import and call these functions; they are never replaced.
 
 ---
 
-## 13. Planned Feature: Conversational Agent (Chat)
+## 13. Conversational Agent — Chat (Implemented in v2)
 
-### 13.1 Overview & Goals
-A single chat surface where the user can talk to the agent to: ask general questions about their plan/progress, request meal swaps conversationally, log food by describing what they ate, or check remaining calories/macros for the day.
+### 13.1 Overview
+A persistent chat surface available from every page. Users can ask about their plan/progress, request meal swaps, log food by description, or check remaining macros — without leaving their current view.
 
-This is **not** a replacement for the existing UI flows (the swap button on meal cards, the six-tab `AddMealModal`) — it's an additional entry point that dispatches to the *same* underlying operations, so there's one source of truth for actual writes. The core nutrition-accuracy guarantee (Section 1) holds here too: the agent never states a macro/calorie number from its own knowledge — every nutrition claim in a chat reply must originate from a tool-call result (USDA cache or already-computed `daily_totals`), never from the model's own estimate.
+Not a replacement for the existing UI flows (swap button on meal cards, six-tab `AddMealModal`) — an additional entry point dispatching to the same underlying operations. The core nutrition-accuracy guarantee (Section 1) holds: the agent never states a macro/calorie number from its own knowledge; every nutrition claim must come from a tool-call result.
 
 ### 13.2 UX Placement
-- Persistent chat launcher (bottom-right slide-over panel on desktop; a tab in the mobile bottom nav) — available from any page, not a dedicated full-screen route, to keep it lightweight
-- Defaults to "today" context (today's plan, today's log) unless the user names another date or day — avoids the ambiguity that motivated the local-date-key fix in Section 9
+- **Desktop:** floating button (bottom-right); opens a `380×620px` panel anchored to the corner; also accessible from the Sidebar "Ask AI" button
+- **Mobile:** "Ask AI" tab in the bottom nav bar (6th item); opens a bottom sheet (`88vh`, rounded top corners)
+- Defaults to "today" context unless the user names a different date
 
-### 13.3 Capabilities (v1 chat scope)
+### 13.3 Capabilities
 
-| Capability | Example phrase | Tool(s) invoked | Write path |
-|---|---|---|---|
-| Meal swap | "swap tonight's dinner for something higher protein" | `swapMeal` | Existing `/api/plan/swap-meal` logic, reused directly — no separate chat-swap code path |
-| Log a meal | "I just had 2 eggs and toast" | `parseAndLogMeal` → (user confirms) → `confirmLogMeal` | Existing `/api/log/text` parse → USDA match → confirmation draft → `/api/log` write → `recalcDailyTotals` |
-| Calorie/macro check-in | "how many calories do I have left today" | `getDailyTotals` | Read-only; `daily_totals` + `profiles` targets, no LLM math |
-| Plan lookup | "what's for lunch tomorrow" | `getMealPlan` | Read-only; existing `/api/plan` GET logic |
+| Capability | Example phrase | Tool(s) invoked |
+|---|---|---|
+| Calorie/macro check-in | "how many calories do I have left today" | `get_daily_totals` |
+| Plan lookup | "what's for lunch tomorrow" | `get_meal_plan` |
+| Meal swap | "swap tonight's dinner for something higher protein" | `swap_meal` |
+| Log a meal | "I just had 2 eggs and toast" | `parse_and_log_meal` → (user confirms inline card) → `confirm_log_meal` |
 
-**Explicitly out of scope for v1 chat:** generating a brand-new multi-day plan from scratch conversationally — that stays on the existing `/meal-plan` "Generate" flow, to avoid conversational drift on a structured 7-day JSONB object that has its own Zod schema and archiving logic (Section 3.2).
+Out of scope: generating a new 7-day plan conversationally — stays on the `/meal-plan` "Generate" flow.
 
 ### 13.4 Architecture
-Builds directly on Section 12's item 2 (LangGraph) and item 3 (Supabase-backed message history) rather than introducing a new pattern:
+- `createReactAgent` from `@langchain/langgraph/prebuilt` with 5 bound tools (`lib/langchain/tools/chat.ts`)
+- Each tool wraps existing lib functions — no duplicated logic
+- Agent constructed per-request in `createChatAgent(supabase, userId)` (`lib/langchain/graphs/chatGraph.ts`); `supabase` client is passed in (not a singleton) to preserve cookie-bound auth
+- History loaded via `SupabaseChatHistory.getMessages()` (20-message rolling window); prepended to the message list on each invocation
+- Response streamed via `agent.streamEvents({ version: "v2" })`; `on_chat_model_stream` events where `metadata.langgraph_node === "agent"` are forwarded as `{ type: "token" }` SSE events
+- When `parse_and_log_meal` completes with `status: "draft"`, the route emits a `{ type: "meal_draft" }` SSE event; `ChatPanel` attaches the inline `MealConfirmCard` to the currently-streaming message
+- Clicking "Log" in `MealConfirmCard` sends a new natural-language message (`"Yes, log all of that to my ${slot}."`); the agent calls `confirm_log_meal` as a normal tool turn — keeps conversation history coherent
+- After the stream ends, the route persists `HumanMessage` + `AIMessage` to `chat_messages` via `SupabaseChatHistory.addMessage()`
 
-- Single "chat" node in a LangGraph graph, bound to a small tool set — each tool wraps an **existing** route/lib function, it does not duplicate logic:
-  - `getDailyTotals(date?)` — reads `lib/nutrition.ts` totals
-  - `getMealPlan(date?)` — existing `/api/plan` GET logic
-  - `swapMeal(date, slot, constraints?)` — existing `/api/plan/swap-meal` logic
-  - `parseAndLogMeal(freeText)` — existing `/api/log/text` parse + USDA match logic; returns a **draft only**, does not write
-  - `confirmLogMeal(draftId)` — writes the confirmed draft via existing `/api/log` POST logic, triggers `recalcDailyTotals`
-- The parse-then-confirm split preserves the confirmation-first UX pattern already used for photo/text logging (Section 3.4) — just rendered as an inline chat card instead of a modal
-- Message history persisted via the `RunnableWithMessageHistory` + Supabase design from Section 12, keyed by `(user_id, chat_session_id)`; a short rolling window (~last 20 messages) is passed as context. Durable facts (goals, restrictions, targets) are still sourced fresh from `profiles` on every turn, never replayed from chat history, so a changed goal mid-conversation can't get stale
-- Response streamed token-by-token from the route handler so the chat feels responsive; tool calls resolve before the model continues its reply, consistent with how tool-calling agents in LangGraph handle interleaved tool/text turns
+### 13.5 Data Model
+See Section 4 (`chat_sessions`, `chat_messages`). Migration: `supabase/migrations/002_chat_tables.sql`.
 
-### 13.5 Data Model Additions
-```sql
-chat_sessions (
-  id uuid pk, user_id uuid references profiles,
-  created_at timestamptz, last_message_at timestamptz
-)
+### 13.6 API Surface
+See Section 7 (`/api/chat`, `/api/chat/sessions`, `/api/chat/sessions/[id]`).
 
-chat_messages (
-  id uuid pk, session_id uuid references chat_sessions on delete cascade,
-  role text,               -- 'user' | 'assistant' | 'tool'
-  content text,
-  tool_name text null,     -- populated when role = 'tool'
-  tool_result jsonb null,
-  created_at timestamptz
-)
-```
-RLS scoped to `user_id` via a join on session ownership, consistent with the rest of the schema (Section 4).
-
-### 13.6 API Surface Addition
-
-| Method | Route | Purpose |
-|---|---|---|
-| POST | `/api/chat` | Send a message; stream agent response; execute bound tools |
-| GET | `/api/chat/sessions` | List a user's chat sessions (history/resume) |
-| GET | `/api/chat/sessions/[id]` | Fetch messages for a session |
-
-### 13.7 Design Decisions & Gotchas (Chat-Specific)
+### 13.7 Design Decisions & Gotchas
 
 | Decision | Rationale |
 |---|---|
-| Confirmation card before any log write, even from chat | Prevents the agent from silently logging a misheard or misparsed quantity — same rule as photo/text logging in Section 3.4 |
-| Tool-only nutrition facts | System prompt explicitly forbids the model stating any calorie/macro number that didn't come from a `tool_result` block — mirrors the "LLM never supplies final nutrition numbers" rule in Section 3.3 |
-| Swap tool reuses existing macro-budget-aware swap logic | Avoids drift between UI-triggered swaps and chat-triggered swaps — one implementation, two entry points |
-| Session-scoped memory, not global | The chatbot uses a per-session rolling window, not a running summary across all history; durable preferences still live in `profiles` — avoids stale-preference bugs if the user's goal changes mid-history |
-| Default date context is "today" unless named | Avoids the same class of timezone/date-key ambiguity bug already solved for plan/journal in Section 9 |
+| Confirmation card before any log write | Prevents the agent from silently logging a misparsed quantity — mirrors the confirmation-first pattern in Section 3.4 |
+| Tool-only nutrition facts | System prompt forbids stating any calorie/macro number not from a `tool_result` — same rule as Section 3.3 |
+| `swap_meal` tool reuses route logic inline | Avoids drift between UI-triggered and chat-triggered swaps; one implementation, two entry points |
+| Session-scoped rolling memory | Per-session 20-message window; durable preferences sourced from `profiles` on every turn so a changed goal can't be stale |
+| `confirm_log_meal` triggered by natural-language message | Card "Log" button sends a follow-up user message; avoids a separate client-side API call and produces a logged turn in message history |

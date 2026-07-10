@@ -62,7 +62,11 @@ const navItems = [
   },
 ];
 
-export default function Sidebar() {
+interface SidebarProps {
+  onChatOpen?: () => void;
+}
+
+export default function Sidebar({ onChatOpen }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -120,6 +124,17 @@ export default function Sidebar() {
 
       {/* Bottom */}
       <div className="px-3 pb-4 space-y-1 border-t border-gray-800 pt-4">
+        {/* Ask AI */}
+        <button
+          onClick={onChatOpen}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-gray-400 hover:bg-gray-800 hover:text-white"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          Ask AI
+        </button>
+
         <Link
           href="/settings"
           className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
