@@ -88,6 +88,9 @@ An AI-powered meal planning and nutrition tracking application. Users generate p
 - Errors in `recalcDailyTotals` are caught and logged but do not fail the overall request — the meal insert still returns 200
 - All POST routes upsert a profile row (`ignoreDuplicates: true`) before inserting FK-dependent rows, handling users who signed up before the migration trigger was in place
 
+#### Custom Entry Servings Convention
+All non-recipe entry methods (plan, search, text, photo, quick-add) log `servings: 1` with macros pre-scaled to the user-specified quantity. This prevents double-counting in `recalcDailyTotals`, which multiplies `custom_entry.calories × servings`. Recipe entries are the exception: they store the real servings count with `recipe_id` so `recalcDailyTotals` can fetch the per-serving value from the `recipes` table and scale it correctly.
+
 #### USDA Search
 - Search returns results with `fdcId`, `description`, `calories/protein_g/carbs_g/fat_g` per 100g
 - Log entry is quantity-in-grams based (not servings), calculated from `per_100g` × grams / 100
@@ -369,6 +372,7 @@ supabase/
 | `gpt-image-1` quality `"low"` | `"standard"` is a DALL-E parameter and is rejected by gpt-image-1; valid values are `"low"`, `"medium"`, `"high"`, `"auto"` |
 | `maxDuration = 60` on meal-image route | gpt-image-1 at low quality typically completes in 10-20s but may exceed Vercel's default 10s timeout on hobby plans |
 | `recalcDailyTotals` errors non-fatal | A failed recalculation shouldn't roll back a successful meal log; dashboard will self-correct on next load |
+| Custom entries always logged with `servings: 1` | `recalcDailyTotals` multiplies `custom_entry.calories × servings`; logging pre-scaled calories with `servings: 1` prevents double-counting. Applies to plan, search, text, photo, and quick-add. Recipe entries use `recipe_id + real servings` so the DB value is multiplied correctly. |
 | Profile upsert on every POST | Handles users created before migration trigger; idempotent with `ignoreDuplicates: true` |
 | `ignoreDuplicates: true` on profile upsert | Prevents overwriting existing profile fields when only `id` is provided |
 | In-session image persistence via `plan` state | When a storage-backed URL comes back, it is written into the React `plan` state so switching days and returning does not re-trigger generation within the same session; data URIs are intentionally excluded from this write-back (too large) |

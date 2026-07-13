@@ -582,7 +582,7 @@ export default function AddMealModal({ slot, onClose, onAdd, currentDate }: AddM
                       </div>
                       <button
                         onClick={() => {
-                          onAdd(slot, [{ name: meal.name, servings, calories: Math.round(meal.calories * servings), protein: Math.round(meal.protein * servings), carbs: Math.round(meal.carbs * servings), fat: Math.round(meal.fat * servings), method: "plan" }]);
+                          onAdd(slot, [{ name: meal.name, servings: 1, calories: Math.round(meal.calories * servings), protein: Math.round(meal.protein * servings), carbs: Math.round(meal.carbs * servings), fat: Math.round(meal.fat * servings), method: "plan" }]);
                           onClose();
                         }}
                         className="ml-auto px-4 py-1.5 bg-brand-600 text-white rounded-lg text-xs font-semibold hover:bg-brand-700 transition-colors"
