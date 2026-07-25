@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import PageHeader from "@/components/shared/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -17,7 +17,6 @@ export default function RecipesPage() {
   const [prompt, setPrompt] = useState("");
   const [cuisine, setCuisine] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Recipe detail state
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
@@ -35,7 +34,6 @@ export default function RecipesPage() {
 
   useEffect(() => {
     fetchRecipes();
-    return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
   }, []);
 
   const handleRecipeClick = async (recipe: Recipe) => {
@@ -72,32 +70,11 @@ export default function RecipesPage() {
     setGenerating(false);
     setPrompt("");
     setCuisine("");
-
-    // Poll for image update
-    if (recipe && !recipe.image_url) {
-      let attempts = 0;
-      pollingRef.current = setInterval(async () => {
-        attempts++;
-        const res2 = await fetch(`/api/recipes/${recipe.id}/image`);
-        if (res2.ok) {
-          const { image_url } = await res2.json();
-          if (image_url) {
-            setRecipes((prev) =>
-              prev.map((r) => r.id === recipe.id ? { ...r, image_url } : r)
-            );
-            if (pollingRef.current) clearInterval(pollingRef.current);
-          }
-        }
-        if (attempts >= 12) {
-          if (pollingRef.current) clearInterval(pollingRef.current);
-        }
-      }, 5000);
-    }
   };
 
   return (
     <div className="p-4 md:p-6 max-w-4xl mx-auto">
-      <PageHeader title="Recipes" subtitle="AI-generated recipes with verified nutrition data">
+      <PageHeader title="Recipes" subtitle="Real recipes matched to your nutrition goals">
         <Button onClick={() => setShowModal(true)} disabled={generating}>
           {generating ? "Generating..." : "+ Generate Recipe"}
         </Button>
@@ -130,7 +107,7 @@ export default function RecipesPage() {
         <Card className="p-12 text-center">
           <div className="text-5xl mb-4">🍽️</div>
           <h3 className="text-lg font-semibold text-gray-800 mb-2">No recipes yet</h3>
-          <p className="text-gray-500 text-sm mb-6">Generate your first AI recipe with verified nutritional data.</p>
+          <p className="text-gray-500 text-sm mb-6">Find your first recipe — matched to your calorie and macro goals.</p>
           <Button onClick={() => setShowModal(true)}>Generate Recipe</Button>
         </Card>
       ) : (

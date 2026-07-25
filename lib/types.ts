@@ -53,7 +53,7 @@ export interface Recipe {
   instructions: string[];
   servings: number;
   image_url: string | null;
-  source: "ai" | "user";
+  source: "ai" | "user" | "spoonacular";
   cuisine: string | null;
   prep_minutes: number | null;
   calories: number;

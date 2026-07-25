@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Button from "@/components/ui/Button";
 import Skeleton from "@/components/ui/Skeleton";
@@ -190,8 +190,6 @@ export default function MealPlanPage() {
     imageUrl: string | null;
     slotKey: string;
   } | null>(null);
-  const [mealImages, setMealImages] = useState<Record<string, string>>({});
-  const pendingImages = useRef<Set<string>>(new Set());
 
   const [mobileDayIdx, setMobileDayIdx] = useState(() => {
     const today = new Date();
@@ -227,57 +225,6 @@ export default function MealPlanPage() {
     fetchPlan(weekStart);
   }, [weekStart, fetchPlan]);
 
-  // Fire image generation for selected day's meals
-  useEffect(() => {
-    if (!plan) return;
-    const planId = plan.id;
-    const dayIso = selectedDayIso;
-
-    SLOTS.forEach((slot) => {
-      const meal = plan.plan[dayIso]?.[slot] as MealCell | null;
-      if (!meal) return;
-      const key = `${dayIso}-${slot}`;
-      // Skip if already have an image (from DB or previous generation) or in-flight
-      if (meal.image_url || mealImages[key] || pendingImages.current.has(key)) return;
-
-      pendingImages.current.add(key);
-      fetch("/api/plan/meal-image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan_id: planId, day: dayIso, slot }),
-      })
-        .then((r) => r.json())
-        .then((data: { image_url?: string; error?: string }) => {
-          if (data.image_url) {
-            // Update local display cache
-            setMealImages((prev) => ({ ...prev, [key]: data.image_url! }));
-            // Also write back into plan state so switching days and back keeps the image
-            // (only for storage-backed URLs, not data URIs — data URIs are too large to hold in plan state)
-            if (!data.image_url!.startsWith("data:")) {
-              setPlan((prev) => {
-                if (!prev) return prev;
-                const dayData = prev.plan[dayIso];
-                if (!dayData?.[slot]) return prev;
-                return {
-                  ...prev,
-                  plan: {
-                    ...prev.plan,
-                    [dayIso]: {
-                      ...dayData,
-                      [slot]: { ...(dayData[slot] as MealCell), image_url: data.image_url },
-                    },
-                  },
-                };
-              });
-            }
-          } else if (data.error) {
-            console.warn(`[meal-image] ${slot} failed:`, data.error);
-          }
-        })
-        .catch((err) => console.error("[meal-image] fetch error:", err))
-        .finally(() => pendingImages.current.delete(key));
-    });
-  }, [plan, selectedDayIso]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -289,8 +236,6 @@ export default function MealPlanPage() {
     if (res.ok) {
       const { plan: data } = await res.json();
       setPlan(data);
-      setMealImages({});
-      pendingImages.current.clear();
     }
     setGenerating(false);
   };
@@ -299,14 +244,6 @@ export default function MealPlanPage() {
     if (!plan) return;
     const key = `${day}-${slot}`;
     setSwappingKey(key);
-
-    // Clear stale image so a fresh one is generated after swap
-    setMealImages((prev) => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-    pendingImages.current.delete(key);
 
     const res = await fetch("/api/plan/swap-meal", {
       method: "POST",
@@ -396,7 +333,7 @@ export default function MealPlanPage() {
   const getImage = (slot: string): string | null => {
     const meal = plan?.plan[selectedDayIso]?.[slot] as MealCell | null;
     if (!meal) return null;
-    return meal.image_url || mealImages[`${selectedDayIso}-${slot}`] || null;
+    return meal.image_url || null;
   };
 
   // ── Render ────────────────────────────────────────────────────────────────────

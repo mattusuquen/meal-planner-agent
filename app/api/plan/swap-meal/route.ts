@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import { openai } from "@/lib/openai";
 import { NextResponse } from "next/server";
+import { searchAndFetchRecipe, extractNutrition } from "@/lib/spoonacular";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -10,7 +10,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Ensure profile row exists
   await supabase.from("profiles").upsert({ id: user.id }, { onConflict: "id", ignoreDuplicates: true });
 
   const body = await request.json();
@@ -39,56 +38,64 @@ export async function POST(request: Request) {
     .eq("id", user.id)
     .single();
 
-  // Calculate remaining macros for the day
+  // Calculate remaining macros for the day (excluding the slot being swapped)
   const dayPlan = mealPlan.plan[day] ?? {};
-  const otherSlots = Object.entries(dayPlan).filter(([s]) => s !== slot);
-  const consumed = otherSlots.reduce(
-    (acc, [, meal]) => {
-      if (!meal) return acc;
-      const m = meal as { calories: number; protein: number; carbs: number; fat: number };
-      return {
-        calories: acc.calories + (m.calories ?? 0),
-        protein: acc.protein + (m.protein ?? 0),
-        carbs: acc.carbs + (m.carbs ?? 0),
-        fat: acc.fat + (m.fat ?? 0),
-      };
-    },
-    { calories: 0, protein: 0, carbs: 0, fat: 0 }
-  );
+  const consumed = Object.entries(dayPlan)
+    .filter(([s]) => s !== slot)
+    .reduce(
+      (acc, [, meal]) => {
+        if (!meal) return acc;
+        const m = meal as { calories: number; protein: number; carbs: number; fat: number };
+        return {
+          calories: acc.calories + (m.calories ?? 0),
+          protein: acc.protein + (m.protein ?? 0),
+          carbs: acc.carbs + (m.carbs ?? 0),
+          fat: acc.fat + (m.fat ?? 0),
+        };
+      },
+      { calories: 0, protein: 0, carbs: 0, fat: 0 }
+    );
 
   const remaining = {
     calories: (profile?.calorie_target ?? 2000) - consumed.calories,
     protein: (profile?.protein_g ?? 150) - consumed.protein,
-    carbs: (profile?.carbs_g ?? 200) - consumed.carbs,
     fat: (profile?.fat_g ?? 65) - consumed.fat,
   };
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      {
-        role: "system",
-        content: `You are a nutritionist. Suggest a replacement ${slot} meal.
-${profile?.dietary_restrictions?.length ? `Restrictions: ${profile.dietary_restrictions.join(", ")}` : ""}
-${profile?.allergies?.length ? `Avoid: ${profile.allergies.join(", ")}` : ""}
-Remaining budget for the day: ${remaining.calories} cal, ${remaining.protein}g protein, ${remaining.carbs}g carbs, ${remaining.fat}g fat.
-Return ONLY JSON: { "name": string, "calories": number, "protein": number, "carbs": number, "fat": number, "ingredients": string[], "instructions": string[], "description": string }
-- ingredients: 4–6 key ingredients as short strings
-- instructions: 3–5 concise cooking steps
-- description: one sentence explaining why this meal fits the goals`,
-      },
-      { role: "user", content: `Suggest a different ${slot} option.` },
-    ],
-    response_format: { type: "json_object" },
-    temperature: 0.9,
+  // Pick a random cuisine from the user's preferences if they have any
+  const cuisines = profile?.cuisines ?? [];
+  const cuisine = cuisines.length
+    ? cuisines[Math.floor(Math.random() * cuisines.length)]
+    : undefined;
+
+  const spoon = await searchAndFetchRecipe({
+    cuisine,
+    restrictions: profile?.dietary_restrictions ?? [],
+    allergies: profile?.allergies ?? [],
+    maxCalories: Math.max(remaining.calories, 200), // never go below 200 to avoid empty results
+    minProtein: remaining.protein > 0 ? Math.round(remaining.protein * 0.3) : undefined,
+    maxFat: remaining.fat > 0 ? Math.round(remaining.fat * 1.2) : undefined,
   });
 
-  let newMeal;
-  try {
-    newMeal = JSON.parse(completion.choices[0].message.content ?? "{}");
-  } catch {
-    return NextResponse.json({ error: "Failed to parse meal suggestion" }, { status: 500 });
+  if (!spoon) {
+    return NextResponse.json({ error: "No matching recipes found" }, { status: 404 });
   }
+
+  const nutrition = extractNutrition(spoon);
+  const instructions = spoon.analyzedInstructions
+    .flatMap((block) => block.steps.map((s) => s.step))
+    .filter(Boolean);
+
+  const newMeal = {
+    name: spoon.title,
+    calories: nutrition.calories,
+    protein: nutrition.protein_g,
+    carbs: nutrition.carbs_g,
+    fat: nutrition.fat_g,
+    ingredients: spoon.extendedIngredients.map((i) => i.original),
+    instructions,
+    image_url: spoon.image || null,
+  };
 
   // Update the plan JSONB
   const updatedPlan = {
