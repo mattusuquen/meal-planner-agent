@@ -1,54 +1,14 @@
 /**
- * LangGraph pipeline for recipe generation (Design Doc §12, Item 2).
+ * LangGraph pipeline for recipe fetching via Spoonacular API.
  *
- * Nodes: generateRecipe → lookupNutrition → calculateMacros → saveRecipe → generateImage
- * Conditional edges: skip subsequent nodes on error; skip image if already cached.
+ * Nodes: fetchSpoonacularRecipe → saveRecipe
+ * Replaces the previous AI-generation + DALL-E image pipeline with real
+ * recipe data and real photos from Spoonacular.
  */
 import { Annotation, StateGraph, START, END } from "@langchain/langgraph";
-import { ChatOpenAI } from "@langchain/openai";
-import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Profile, Recipe } from "@/lib/types";
-import { matchIngredient } from "@/lib/usda";
-import { calcNutrientsFromUSDA } from "@/lib/nutrition";
-
-// ---------------------------------------------------------------------------
-// Zod schema (identical to the one previously in the route handler)
-// ---------------------------------------------------------------------------
-
-const RecipeSchema = z.object({
-  name: z.string(),
-  servings: z.number().int().min(1),
-  prep_minutes: z.number().int().min(0),
-  cuisine: z.string(),
-  instructions: z.array(z.string()),
-  ingredients: z.array(
-    z.object({
-      raw_text: z.string(),
-      quantity: z.number(),
-      unit: z.string(),
-      estimated_grams: z.number(),
-    })
-  ),
-});
-
-type ParsedRecipe = z.infer<typeof RecipeSchema>;
-
-type MacroTotals = {
-  calories: number;
-  protein_g: number;
-  carbs_g: number;
-  fat_g: number;
-};
-
-type EnrichedIngredient = {
-  raw_text: string;
-  quantity: number;
-  unit: string;
-  grams: number;
-  usda_fdc_id: number | null;
-  macros: MacroTotals;
-};
+import { searchAndFetchRecipe, extractNutrition } from "@/lib/spoonacular";
 
 // ---------------------------------------------------------------------------
 // State
@@ -65,18 +25,6 @@ const RecipeState = Annotation.Root({
   profile: Annotation<Partial<Profile> | null>(),
 
   // ── Pipeline state ──
-  parsedRecipe: Annotation<ParsedRecipe | null>({
-    value: (_, update) => update,
-    default: () => null,
-  }),
-  ingredientData: Annotation<EnrichedIngredient[]>({
-    value: (_, update) => update,
-    default: () => [],
-  }),
-  macroTotals: Annotation<MacroTotals | null>({
-    value: (_, update) => update,
-    default: () => null,
-  }),
   savedRecipe: Annotation<Recipe | null>({
     value: (_, update) => update,
     default: () => null,
@@ -93,136 +41,92 @@ type RecipeStateType = typeof RecipeState.State;
 // Nodes
 // ---------------------------------------------------------------------------
 
-async function generateRecipe(
+async function fetchSpoonacularRecipe(
   state: RecipeStateType
 ): Promise<Partial<RecipeStateType>> {
-  const { profile, cuisine, restrictions, allergies, prompt } = state;
+  const { supabase, userId, prompt, cuisine, restrictions, allergies, profile } = state;
 
-  const systemPrompt = `You are a professional chef and nutritionist. Generate a healthy, delicious recipe.
-${restrictions.length ? `Dietary restrictions: ${restrictions.join(", ")}` : ""}
-${allergies.length ? `AVOID these allergens: ${allergies.join(", ")}` : ""}
-${cuisine ? `Cuisine style: ${cuisine}` : ""}
-${profile?.calorie_target ? `Target approximately ${Math.round(profile.calorie_target / 3)} calories per serving.` : ""}
+  // Per-meal targets — assume 3 meals per day
+  const mealsPerDay = 3;
+  const calTarget = profile?.calorie_target ?? null;
+  const proteinTarget = profile?.protein_g ?? null;
+  const fatTarget = profile?.fat_g ?? null;
 
-Return ONLY a JSON object matching this exact schema:
-{
-  "name": string,
-  "servings": number (integer),
-  "prep_minutes": number,
-  "cuisine": string,
-  "instructions": string[],
-  "ingredients": [{ "raw_text": string, "quantity": number, "unit": string, "estimated_grams": number }]
-}`;
+  // Allow ±25% around the per-meal calorie target so results aren't too narrow
+  const perMealCal = calTarget ? calTarget / mealsPerDay : null;
+  const minCalories = perMealCal ? Math.round(perMealCal * 0.75) : undefined;
+  const maxCalories = perMealCal ? Math.round(perMealCal * 1.25) : undefined;
 
-  const userMessage =
-    prompt ??
-    `Generate a healthy ${cuisine ?? "balanced"} recipe${restrictions.length ? ` that is ${restrictions.join(" and ")}` : ""}.`;
+  // Minimum protein per meal (50% of daily target / 3 meals — a soft lower bound)
+  const minProtein = proteinTarget ? Math.round((proteinTarget / mealsPerDay) * 0.5) : undefined;
 
-  const model = new ChatOpenAI({
-    model: "gpt-4o-mini",
-    temperature: 0.8,
-    modelKwargs: { response_format: { type: "json_object" } },
+  // Max fat per meal (daily target / 3 meals with 25% buffer)
+  const maxFat = fatTarget ? Math.round((fatTarget / mealsPerDay) * 1.25) : undefined;
+
+  // If no cuisine specified, pick randomly from the user's preferred cuisines
+  const effectiveCuisine =
+    cuisine ||
+    (profile?.cuisines?.length
+      ? profile.cuisines[Math.floor(Math.random() * profile.cuisines.length)]
+      : undefined);
+
+  const spoon = await searchAndFetchRecipe({
+    query: prompt,
+    cuisine: effectiveCuisine,
+    restrictions,
+    allergies,
+    minCalories,
+    maxCalories,
+    minProtein,
+    maxFat,
   });
 
-  const response = await model.invoke([
-    ["system", systemPrompt],
-    ["human", userMessage],
-  ]);
-
-  const raw =
-    typeof response.content === "string" ? response.content : "{}";
-
-  const result = RecipeSchema.safeParse(JSON.parse(raw));
-  if (!result.success) {
-    const msg = result.error.issues.map((i) => i.message).join("; ");
-    console.error("[recipeGraph/generateRecipe] parse error:", msg);
-    return { error: "Failed to parse AI recipe output" };
+  if (!spoon) {
+    return { error: "No matching recipes found. Try different filters." };
   }
 
-  return { parsedRecipe: result.data };
-}
+  const nutrition = extractNutrition(spoon);
+  const servings = spoon.servings || 1;
 
-async function lookupNutrition(
-  state: RecipeStateType
-): Promise<Partial<RecipeStateType>> {
-  const { supabase, parsedRecipe } = state;
-  if (!parsedRecipe) return {};
+  const instructions = spoon.analyzedInstructions
+    .flatMap((block) => block.steps.map((s) => s.step))
+    .filter(Boolean);
 
-  const ingredientData: EnrichedIngredient[] = [];
-
-  for (const ing of parsedRecipe.ingredients) {
-    const match = await matchIngredient(ing.raw_text, supabase);
-    const macros = match
-      ? calcNutrientsFromUSDA(match.per_100g, ing.estimated_grams)
-      : { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
-
-    ingredientData.push({
-      raw_text: ing.raw_text,
-      quantity: ing.quantity,
-      unit: ing.unit,
-      grams: ing.estimated_grams,
-      usda_fdc_id: match?.fdcId ?? null,
-      macros,
-    });
-  }
-
-  return { ingredientData };
-}
-
-async function calculateMacros(
-  state: RecipeStateType
-): Promise<Partial<RecipeStateType>> {
-  const totals = state.ingredientData.reduce<MacroTotals>(
-    (acc, ing) => ({
-      calories: acc.calories + ing.macros.calories,
-      protein_g: acc.protein_g + ing.macros.protein_g,
-      carbs_g: acc.carbs_g + ing.macros.carbs_g,
-      fat_g: acc.fat_g + ing.macros.fat_g,
-    }),
-    { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
-  );
-  return { macroTotals: totals };
-}
-
-async function saveRecipe(
-  state: RecipeStateType
-): Promise<Partial<RecipeStateType>> {
-  const { supabase, userId, parsedRecipe, ingredientData, macroTotals } =
-    state;
-  if (!parsedRecipe || !macroTotals) return { error: "Missing recipe data" };
-
-  const servings = parsedRecipe.servings;
+  const ingredients = spoon.extendedIngredients.map((ing) => ({
+    raw_text: ing.original,
+    quantity: ing.amount,
+    unit: ing.unit,
+    grams: 0,
+    usda_fdc_id: null,
+  }));
 
   const { data: recipe, error: recipeError } = await supabase
     .from("recipes")
     .insert({
       created_by: userId,
-      name: parsedRecipe.name,
-      instructions: parsedRecipe.instructions,
+      name: spoon.title,
+      instructions,
       servings,
-      source: "ai",
-      cuisine: parsedRecipe.cuisine,
-      prep_minutes: parsedRecipe.prep_minutes,
-      calories: Math.round(macroTotals.calories / servings),
-      protein_g: Math.round((macroTotals.protein_g / servings) * 10) / 10,
-      carbs_g: Math.round((macroTotals.carbs_g / servings) * 10) / 10,
-      fat_g: Math.round((macroTotals.fat_g / servings) * 10) / 10,
+      image_url: spoon.image || null,
+      source: "spoonacular",
+      cuisine: spoon.cuisines?.[0] ?? cuisine ?? null,
+      prep_minutes: spoon.readyInMinutes ?? null,
+      calories: nutrition.calories,
+      protein_g: nutrition.protein_g,
+      carbs_g: nutrition.carbs_g,
+      fat_g: nutrition.fat_g,
     })
     .select()
     .single();
 
   if (recipeError || !recipe) {
-    console.error(
-      "[recipeGraph/saveRecipe]",
-      recipeError?.message,
-      recipeError?.details
-    );
+    console.error("[recipeGraph/fetchSpoonacularRecipe]", recipeError?.message);
     return { error: recipeError?.message ?? "Failed to save recipe" };
   }
 
-  if (ingredientData.length > 0) {
+  if (ingredients.length > 0) {
     await supabase.from("recipe_ingredients").insert(
-      ingredientData.map((i) => ({
+      ingredients.map((i) => ({
         recipe_id: recipe.id,
         usda_fdc_id: i.usda_fdc_id,
         raw_text: i.raw_text,
@@ -236,37 +140,14 @@ async function saveRecipe(
   return { savedRecipe: recipe as Recipe };
 }
 
-async function generateImage(
-  state: RecipeStateType
-): Promise<Partial<RecipeStateType>> {
-  if (!state.savedRecipe) return {};
-
-  const baseUrl =
-    process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-
-  // Fire-and-forget — do NOT await
-  fetch(`${baseUrl}/api/recipes/${state.savedRecipe.id}/image`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  }).catch(() => {});
-
-  return {};
-}
-
 // ---------------------------------------------------------------------------
 // Routing
 // ---------------------------------------------------------------------------
 
-function routeAfterGenerate(
+function routeAfterFetch(
   state: RecipeStateType
-): "lookupNutrition" | typeof END {
-  return state.parsedRecipe !== null ? "lookupNutrition" : END;
-}
-
-function routeAfterSave(
-  state: RecipeStateType
-): "generateImage" | typeof END {
-  return state.savedRecipe !== null ? "generateImage" : END;
+): typeof END {
+  return END;
 }
 
 // ---------------------------------------------------------------------------
@@ -274,15 +155,7 @@ function routeAfterSave(
 // ---------------------------------------------------------------------------
 
 export const recipeGraph = new StateGraph(RecipeState)
-  .addNode("generateRecipe", generateRecipe)
-  .addNode("lookupNutrition", lookupNutrition)
-  .addNode("calculateMacros", calculateMacros)
-  .addNode("saveRecipe", saveRecipe)
-  .addNode("generateImage", generateImage)
-  .addEdge(START, "generateRecipe")
-  .addConditionalEdges("generateRecipe", routeAfterGenerate)
-  .addEdge("lookupNutrition", "calculateMacros")
-  .addEdge("calculateMacros", "saveRecipe")
-  .addConditionalEdges("saveRecipe", routeAfterSave)
-  .addEdge("generateImage", END)
+  .addNode("fetchSpoonacularRecipe", fetchSpoonacularRecipe)
+  .addEdge(START, "fetchSpoonacularRecipe")
+  .addConditionalEdges("fetchSpoonacularRecipe", routeAfterFetch)
   .compile();
